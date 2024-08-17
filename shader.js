@@ -1,6 +1,31 @@
 const canvas = document.getElementById('glcanvas');
 const gl = canvas.getContext('webgl2');
 
+let mFloat32Textures;
+let mFloat32Filter;
+let mFloat16Textures;
+let mDrawBuffers;
+let mDepthTextures;
+let mDerivatives;
+let mFloat16Filter;
+let mShaderTextureLOD;
+let mAnisotropic;
+let mRenderToFloat32F;
+let mDebugShader;
+let mAsynchCompile;
+mFloat32Textures  = true;
+mFloat32Filter    = gl.getExtension( 'OES_texture_float_linear');
+mFloat16Textures  = true;
+mFloat16Filter    = gl.getExtension( 'OES_texture_half_float_linear' );
+mDerivatives      = true;
+mDrawBuffers      = true;
+mDepthTextures    = true;
+mShaderTextureLOD = true;
+mAnisotropic = gl.getExtension( 'EXT_texture_filter_anisotropic' );
+mRenderToFloat32F = gl.getExtension( 'EXT_color_buffer_float');
+mDebugShader = gl.getExtension('WEBGL_debug_shaders');
+mAsynchCompile = gl.getExtension('KHR_parallel_shader_compile');
+
 // Set the canvas size
 canvas.width = window.innerWidth;  // Set canvas width to window width
 canvas.height = window.innerHeight;  // Set canvas height to window height
@@ -96,7 +121,7 @@ function createTexture(gl, width, height, type = mGl.TEXTURE_2D) {
   const texture = gl.createTexture();
   if(type == mGl.TEXTURE_2D) {
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, width, height, 0, gl.RGBA, gl.FLOAT, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -112,9 +137,10 @@ function createTexture(gl, width, height, type = mGl.TEXTURE_2D) {
     // mGL.texImage2D( mGL.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, glFoTy.mGLFormat, xres, yres, 0, glFoTy.mGLExternal, glFoTy.mGLType, buffer );
     // mGL.texImage2D( mGL.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, glFoTy.mGLFormat, xres, yres, 0, glFoTy.mGLExternal, glFoTy.mGLType, buffer );
     for (let i = 0; i < 6; i++) {
-      gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.FLOAT, null);
     }
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
@@ -123,8 +149,6 @@ function createTexture(gl, width, height, type = mGl.TEXTURE_2D) {
 }
 
 const commonShaderSrc = `
-// out vec4 fragColor;  // Define an output variable
-
 float sdCircle(vec2 p, float r) {
     return length(p) - r;
 }
@@ -144,7 +168,7 @@ const float MAGIC = 1e25;
 #define probe_center vec2(0.5f)
 
 #define BRANCHING_FACTOR 2
-#define SPATIAL_SCALE_FACTOR 1
+#define SPATIAL_SCALE_FACTOR 2
 
 struct CascadeSize
 {
@@ -531,7 +555,7 @@ RayHit radiance(sampler2D sdf_tex, vec2 ro, vec2 rd, float tMax) {
 `;
 
 const bufferAShaderSrc = `#version 300 es
-precision mediump float;
+precision highp float;
 uniform sampler2D iChannel0;
 uniform vec2 resolution;  
 out vec4 fragColor;
@@ -545,7 +569,7 @@ void main() {
 `;
 
 const bufferBShaderSrc = `#version 300 es
-precision mediump float;
+precision highp float;
 uniform sampler2D iChannel0;  // Input from Common
 uniform vec2 resolution;  
 out vec4 fragColor;
@@ -559,48 +583,133 @@ float sdCapsule(vec2 p, vec2 a, vec2 b, float r) {
 }
 
 void main() {
-   // Calculate the center of the screen
-    vec2 center = resolution.xy * 0.5;
-    
-    // Position of the current fragment relative to the center
-    vec2 p = gl_FragCoord.xy - center;
+#define GRID_WIDTH 5
+#define GRID_HEIGHT 5
+#define NUM_CAPSULES (GRID_WIDTH * GRID_HEIGHT)
 
-    // Time-dependent parameters
-    float time = iTime;
-    float capsuleLength = 20.0 + 10.0 * sin(time * 0.5); // Varying length of the capsule in pixels
-    float capsuleRadius = 30.0 + 15.0 * cos(time * 0.7);  // Varying radius of the capsule in pixels
-    float rotationAngle = time * 4.0; // Rotation angle over time
+// Calculate the center of the screen
+vec2 center = resolution.xy * 0.5;
 
+// Position of the current fragment relative to the center
+vec2 p = gl_FragCoord.xy - center;
+
+// Time-dependent parameters
+float time = iTime;
+
+// Arrays to store individual capsule properties
+vec2 positions[NUM_CAPSULES];
+float rotations[NUM_CAPSULES];
+vec3 colors[NUM_CAPSULES];
+float lengths[NUM_CAPSULES];
+float radii[NUM_CAPSULES];
+
+// Initialize capsule properties
+float gridSpacingX = resolution.x * 0.8 / float(GRID_WIDTH);
+float gridSpacingY = resolution.y * 0.8 / float(GRID_HEIGHT);
+vec2 gridOffset = vec2(-gridSpacingX * float(GRID_WIDTH - 1) * 0.5,
+                       -gridSpacingY * float(GRID_HEIGHT - 1) * 0.5);
+
+for (int y = 0; y < GRID_HEIGHT; y++) {
+    for (int x = 0; x < GRID_WIDTH; x++) {
+        int i = y * GRID_WIDTH + x;
+        positions[i] = gridOffset + vec2(float(x) * gridSpacingX, float(y) * gridSpacingY);
+        rotations[i] = time * (.0 + float(i) * 0.2);
+        colors[i] = vec3(0.5 + 0.5 * sin(time + 4.0*float(i)),
+                         0.5 + 0.5 * cos(time * 1.5 + float(i)),
+                         0.5 + 0.5 * sin(time * 2.0 + float(i)));
+
+        // Every 3rd capsule is black, without a conditional
+        colors[i] = mix(colors[i], vec3(0.0), float(i % 3 == 0));
+        
+        lengths[i] = 60.0 + 20.0 * sin(time * 0.5 + float(i));
+        radii[i] = 20.0 + 10.0 * cos(time * 0.7 + float(i));
+    }
+}
+
+float minDist = 1e10;
+vec3 finalColor = vec3(0.0);
+
+for (int i = 0; i < NUM_CAPSULES; i++) {
     // Define the endpoints of the capsule in pixel space
-    vec2 a = vec2(-capsuleLength, 0.0);
-    vec2 b = vec2( capsuleLength, 0.0);
+    vec2 a = vec2(-lengths[i], 0.0);
+    vec2 b = vec2(lengths[i], 0.0);
 
-    // Rotate the capsule by the rotation angle
-    mat2 rotation = mat2(cos(rotationAngle), -sin(rotationAngle),
-                         sin(rotationAngle),  cos(rotationAngle));
+    // Rotate the capsule
+    mat2 rotation = mat2(cos(rotations[i]), -sin(rotations[i]),
+                         sin(rotations[i]), cos(rotations[i]));
     a = rotation * a;
     b = rotation * b;
 
-    // Calculate the SDF of the capsule relative to the center
-    float sd = sdCapsule(p, a, b, capsuleRadius);
-    sd = sdCircle(p, 20.0);
+    // Translate the capsule
+    a += positions[i];
+    b += positions[i];
 
-    // Convert the SDF to a binary value: 0 inside the capsule, 1 outside
-    float binarySD = sd > 0.0 ? 1.0 : 0.0;
+    // Calculate the SDF of the capsule
+    float sd = sdCapsule(p, a, b, radii[i]);
 
-    // Emissivity (color) changes over time
-    vec3 emissivity = vec3(0.5 + 0.5 * sin(time * 2.0),
-                           0.5 + 0.5 * cos(time * 1.5),
-                           0.5 + 0.5 * sin(time * 1.0));
+    // Update the minimum distance and color if this capsule is closer
+    if (sd < minDist) {
+        minDist = sd;
+        finalColor = colors[i];
+    }
+}
+
+// Output the final color
+fragColor = vec4(minDist, finalColor);
+
+//  // Calculate the center of the screen
+  //   vec2 center = resolution.xy * 0.5;
+
+  //   // Position of the current fragment relative to the center
+  //   vec2 p = gl_FragCoord.xy - center;
+
+  //   // Time-dependent parameters
+  //   float time = iTime;
+  //   float capsuleLength = 100.0 + 50.0 * sin(time * 0.5); // Varying length of the capsule in pixels
+  //   float capsuleRadius = 50.0 + 25.0 * cos(time * 0.7);  // Varying radius of the capsule in pixels
+  //   float rotationAngle = time * 6.0; // Rotation angle over time
+
+  //   // Define the endpoints of the capsule in pixel space
+  //   vec2 a = vec2(-capsuleLength, 0.0);
+  //   vec2 b = vec2( capsuleLength, 0.0);
+
+  //   // Rotate the capsule by the rotation angle
+  //   mat2 rotation = mat2(cos(rotationAngle), -sin(rotationAngle),
+  //                        sin(rotationAngle),  cos(rotationAngle));
+  //   a = rotation * a;
+  //   b = rotation * b;
+
+  //   // Calculate the SDF of the capsule relative to the center
+  //   float sd = sdCapsule(p, a, b, capsuleRadius);
+
+  //   float sdCircle1 = sdCircle(p, vec2(-100.0, 0.0), 50.0);
 
 
-    fragColor = vec4(sd, emissivity);
+  //   // Emissivity (color) changes over time, but each SDF is different
+  //   vec3 emissivity = vec3(0.5 + 0.5 * sin(time * 2.0),
+  //                          0.5 + 0.5 * cos(time * 1.5),
+  //                          0.5 + 0.5 * sin(time * 1.0));
+    
+  //   vec3 colorCapsule = vec3(1.0, 0.5, 0.0); // Orange color for the capsule
+  //   vec3 colorCircle = vec3(0.0, 0.5, 1.0);  // Blue color for the circle
+
+  //   if (sd < sdCircle1) {
+  //       fragColor = vec4(sd, colorCapsule);
+  //   } else {  
+  //       fragColor = vec4(sdCircle1, colorCircle);
+  //   }
+    
+
+    // Combined SDF
+    // float combinedSDF = min(sd, sdCircle1);
+
+    // fragColor = vec4(combinedSDF, emissivity);
 }
 
 `;
 
 const cubeAShaderSrc = `#version 300 es
-precision mediump float;
+precision highp float;
 uniform samplerCube iChannel0;
 uniform sampler2D iChannel1; 
 uniform vec2 resolution;  
@@ -768,8 +877,8 @@ vec4 CastMergedIntervalBilinearFix(vec2 screen_pos, vec2 dir, vec2 interval_leng
         ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
 
         vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        // if(prev_cascade_index < nCascades)
-        //     prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
+        if(prev_cascade_index < nCascades)
+            prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
 
         vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_location.probe_index), prev_probe_location.cascade_index, c0_size);
 
@@ -1024,7 +1133,8 @@ uniform vec3 unCorners[5];
 out vec4 outColor;
 
 void main( void ) {
-  vec4 color = vec4(1e20);vec3 ro = unCorners[4];
+  vec4 color = vec4(1e20);
+  vec3 ro = unCorners[4];
   vec2 uv = (gl_FragCoord.xy - unViewport.xy)/unViewport.zw;
   vec3 rd = normalize( mix( mix( unCorners[0], unCorners[1], uv.x ),mix( unCorners[3], unCorners[2], uv.x ), uv.y ) - ro);
   mainCubemap( color, gl_FragCoord.xy-unViewport.xy, ro, rd );
@@ -1034,7 +1144,7 @@ void main( void ) {
 `;
 
 const imageShaderSrc = `#version 300 es
-precision mediump float;
+precision highp float;
 uniform samplerCube iChannel0; 
 uniform sampler2D iChannel1;
 uniform vec2 resolution;
@@ -1042,16 +1152,6 @@ uniform vec2 resolution;
 out vec4 fragColor;
 
 ${commonShaderSrc}
-// void main() {
-//     vec2 uv = gl_FragCoord.xy / resolution.xy;
-//     // vec4 color = texture(iChannel0, uv);
-//     // Image logic
-//     fragColor = vec4(1.0, 0.0, 0.0, 1.0);
-//     // fragColor = cubemapFetch(iChannel0, 0, vec2(0.0, 0.0));
-//     // fragColor = texture(iChannel0, vec3(0.0, 0.0, 0.0));
-//     // fragColor = cubemapFetch(iChannel0, 1, ivec2(0, 0));
-//     // fragColor = color;
-// }
 
 void main() {
    
@@ -1099,8 +1199,8 @@ void main() {
     }
     
     // Overlay actual SDF drawing to fix low resolution edges
-    //vec4 data = sampleDrawing(iChannel1, fragCoord);
-    //fluence = mix(fluence, data * 2.0 * PI, clamp(3.0 - data.r, 0.0, 1.0));
+    // vec4 data = sampleDrawing(iChannel1, fragCoord);
+    // fluence = mix(fluence, data * 2.0 * PI, clamp(3.0 - data.r, 0.0, 1.0));
     // Tonemap
     //fragColor = vec4(pow(fluence / (fluence + 1.0), vec3(1.0/2.5)), 1.0);
     fragColor = vec4(1.0 - 1.0 / pow(1.0 + fluence.rgb, vec3(2.5)), 1.0);
@@ -1108,9 +1208,9 @@ void main() {
 `;
 
 const vertexShaderSrc = `#version 300 es
-in vec4 a_position;
+in vec2 position;
 void main() {
-    gl_Position = a_position;
+    gl_Position = vec4(position, 0.0, 1.0);
 }
 `;
 
@@ -1323,27 +1423,21 @@ function createRenderTargetCubemap(colorTexture) {
     const fbId = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbId);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X, colorTexture, 0);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE) {
+      console.log("Framebuffer is not complete! CreateRenderTarget");
+      return null;
+    } else {
+      console.log("Framebuffer is complete! CreateRenderTarget");
+    }
+
     return {
         fbId,
         colorTexture: colorTexture,
     };
-}
-
-// function createFramebuffer(gl) {
-//   const framebuffer = gl.createFramebuffer();
-//   gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-
-//   const textures = [];
-
-//       const texture1 = createTexture(gl, gl.canvas.width, gl.canvas.height);
-//       textures.push(texture1);
-//       const texture2 = createTexture(gl, gl.canvas.width, gl.canvas.height);
-//       textures.push(texture2);
-
-
-//   return { framebuffer, textures };
-// }
+  }
 
 function bindFramebuffer(gl, framebuffer) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer ? framebuffer.framebuffer : null);
@@ -1371,7 +1465,7 @@ function drawQuad(gl) {
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 
-    const position = gl.getAttribLocation(bufferAProgram, 'a_position');
+    const position = gl.getAttribLocation(bufferAProgram, 'position');
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
 
