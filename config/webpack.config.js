@@ -498,6 +498,10 @@ module.exports = function (webpackEnv) {
                 loader: "webpack-glsl-minify",
                 options: {
                   output: "source",
+                  // preserveDefines: true,
+                  // preserveUniforms: true,
+                  // preserveVariables: true,
+                  // disableMangle: true,
                 },
               },
             },

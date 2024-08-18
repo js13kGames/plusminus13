@@ -1,3 +1,9 @@
+import bufferBShaderSrc from "./shaders/bufferB.fragment.glsl";
+import cubeAShaderSrc from "./shaders/cubeMap.fragment.glsl";
+import imageShaderSrc from "./shaders/image.fragment.glsl";
+import geometricsdffont from "./shaders/geometricsdffont.fragment.glsl";
+// import TinySDFRenderer from "./tinysdf";
+
 const canvas = <HTMLCanvasElement>document.getElementById("glcanvas");
 if (!canvas) {
   throw new Error("No canvas found");
@@ -43,8 +49,15 @@ const bufferB = {
   lastRenderDone: 0,
 };
 
+const geomtricSdfBuffer = {
+  textures: [null, null], // 2 elements
+  targets: [null, null], // 2 elements
+  lastRenderDone: 0,
+};
+
 resizeBuffer(gl, bufferA);
 resizeBuffer(gl, bufferB);
+resizeBuffer(gl, geomtricSdfBuffer);
 resizeCubemapBuffer(gl, cubemapBuffer);
 
 function resizeCanvas() {
@@ -161,1147 +174,19 @@ function createTexture(
   return texture;
 }
 
-const commonShaderSrc = `
-float sdCircle(vec2 p, float r) {
-    return length(p) - r;
-}
-
-#define MERGE_FIX 1
-#define C_MINUS1_GATHERING 1
-// Number of cascades all together
-const int nCascades = 6;
-
-// Brush radius used for drawing, measured as fraction of resolution.y
-const float brushRadius = 0.02;
-
-const float MAX_FLOAT = uintBitsToFloat(0x7f7fffffu);
-const float PI = 3.1415927;
-const float MAGIC = 1e25;
-
-#define probe_center vec2(0.5f)
-
-#define BRANCHING_FACTOR 2
-#define SPATIAL_SCALE_FACTOR 1
-
-struct CascadeSize
-{
-    ivec2 probes_count;
-    int dirs_count;
-};
-CascadeSize GetC0Size(ivec2 viewport_size)
-{
-    CascadeSize c0_size;
-    #if BRANCHING_FACTOR == 0
-        c0_size.probes_count = ivec2(256) * ivec2(1, viewport_size.y) / ivec2(1, viewport_size.x);//viewport_size / 10;
-        c0_size.dirs_count = 64;
-    #elif BRANCHING_FACTOR == 1
-        c0_size.probes_count = ivec2(256) * ivec2(1, viewport_size.y) / ivec2(1, viewport_size.x);//viewport_size / 10;
-        c0_size.dirs_count = 32;
-    #elif BRANCHING_FACTOR == 2
-        c0_size.probes_count = ivec2(512) * ivec2(1, viewport_size.y) / ivec2(1, viewport_size.x);//viewport_size / 10;
-        c0_size.dirs_count = 4;
-    #endif
-    return c0_size;
-}
-
-float GetC0IntervalLength(ivec2 viewport_size)
-{
-    #if BRANCHING_FACTOR == 0
-        return float(viewport_size.x) * 10.0f * 1e-2f;
-    #elif BRANCHING_FACTOR == 1
-        return float(viewport_size.x) * 15.0f * 1e-3f;
-    #elif BRANCHING_FACTOR == 2
-        return float(viewport_size.x) * 1.5f * 1e-3f;
-    #endif
-}
-
-vec2 screenRes;
-
-vec4 cubemapFetch(samplerCube sampler, int face, ivec2 P) {
-    // Look up a single texel in a cubemap
-    ivec2 cubemapRes = textureSize(sampler, 0);
-    if (clamp(P, ivec2(0), cubemapRes - 1) != P || face < 0 || face > 5) {
-        return vec4(0.0);
-    }
-
-    vec2 p = (vec2(P) + 0.5) / vec2(cubemapRes) * 2.0 - 1.0;
-    vec3 c;
-    
-    switch (face) {
-        case 0: c = vec3( 1.0, -p.y, -p.x); break;
-        case 1: c = vec3(-1.0, -p.y,  p.x); break;
-        case 2: c = vec3( p.x,  1.0,  p.y); break;
-        case 3: c = vec3( p.x, -1.0, -p.y); break;
-        case 4: c = vec3( p.x, -p.y,  1.0); break;
-        case 5: c = vec3(-p.x, -p.y, -1.0); break;
-    }
-    
-    return texture(sampler, normalize(c));
-}
-
-ivec2 roundSDim(ivec2 v) {
-    return v - (v & ivec2((1 << nCascades) - 1));
-}
-
-float GetCascadeIntervalStartScale(int cascade_index)
-{
-    #if BRANCHING_FACTOR == 0
-        return float(cascade_index);
-    #else
-        return (cascade_index == 0 ? 0.0f : float(1 << (BRANCHING_FACTOR * cascade_index))) + float(C_MINUS1_GATHERING);
-    #endif
-}
-
-vec2 GetCascadeIntervalScale(int cascade_index)
-{
-    return vec2(GetCascadeIntervalStartScale(cascade_index), GetCascadeIntervalStartScale(cascade_index + 1));
-}
-
-struct BilinearSamples
-{
-    ivec2 base_index;
-    vec2 ratio;
-};
-
-vec4 GetBilinearWeights(vec2 ratio)
-{
-    return vec4(
-        (1.0f - ratio.x) * (1.0f - ratio.y),
-        ratio.x * (1.0f - ratio.y),
-        (1.0f - ratio.x) * ratio.y,
-        ratio.x * ratio.y);
-}
-
-ivec2 GetBilinearOffset(int offset_index)
-{
-    ivec2 offsets[4] = ivec2[4](ivec2(0, 0), ivec2(1, 0), ivec2(0, 1), ivec2(1, 1));
-    return offsets[offset_index];
-}
-BilinearSamples GetBilinearSamples(vec2 pixel_index2f)
-{
-    BilinearSamples samples;
-    samples.base_index = ivec2(floor(pixel_index2f));
-    samples.ratio = fract(pixel_index2f);
-    return samples;
-}
-
-struct LinearSamples
-{
-    int base_index;
-    float ratio;
-};
-vec2 GetLinearWeights(float ratio)
-{
-    return vec2(1.0f - ratio, ratio);
-}
-LinearSamples GetLinearSamples(float indexf)
-{
-    LinearSamples samples;
-    samples.base_index = int(floor(indexf));
-    samples.ratio = fract(indexf);
-    return samples;
-}
-
-CascadeSize GetCascadeSize(int cascade_index, CascadeSize c0_size)
-{
-    CascadeSize cascade_size;
-    cascade_size.probes_count = max(ivec2(1), c0_size.probes_count >> (SPATIAL_SCALE_FACTOR * cascade_index));
-    cascade_size.dirs_count = c0_size.dirs_count * (1 << (BRANCHING_FACTOR * cascade_index));
-    return cascade_size;
-}
-
-int GetCascadeLinearOffset(int cascade_index, CascadeSize c0_size)
-{
-    int c0_pixels_count = c0_size.probes_count.x * c0_size.probes_count.y * c0_size.dirs_count;
-    int offset = 0;
-    
-    for(int i = 0; i < cascade_index; i++)
-    {
-        CascadeSize cascade_size = GetCascadeSize(i, c0_size);
-        offset += cascade_size.probes_count.x * cascade_size.probes_count.y * cascade_size.dirs_count;
-    }
-    return offset;
-    /*#if BRANCHING_FACTOR == 2
-        return c0_pixels_count * cascade_index;
-    #elif BRANCHING_FACTOR == 1
-        return cascade_index == 0 ? 0 : (c0_pixels_count * ((1 << cascade_index) - 1) / (1 << (cascade_index - 1)));
-    #endif*/
-    
-}
-
-
-
-struct ProbeLocation
-{
-    ivec2 probe_index;
-    int dir_index;
-    int cascade_index;
-};
-int ProbeLocationToPixelIndex(ProbeLocation probe_location, CascadeSize c0_size)
-{
-    CascadeSize cascade_size = GetCascadeSize(probe_location.cascade_index, c0_size);
-    int probe_linear_index = probe_location.probe_index.x + probe_location.probe_index.y * cascade_size.probes_count.x;
-    int offset_in_cascade = probe_linear_index * cascade_size.dirs_count + probe_location.dir_index;
-    return GetCascadeLinearOffset(probe_location.cascade_index, c0_size) + offset_in_cascade ;
-}
-
-ProbeLocation PixelIndexToProbeLocation(int pixel_index, CascadeSize c0_size)
-{
-    ProbeLocation probe_location;
-
-    for(
-        probe_location.cascade_index = 0;
-        GetCascadeLinearOffset(probe_location.cascade_index + 1, c0_size) <= pixel_index && probe_location.cascade_index < 10;
-        probe_location.cascade_index++);
-
-    int offset_in_cascade = pixel_index - GetCascadeLinearOffset(probe_location.cascade_index, c0_size);
-    CascadeSize cascade_size = GetCascadeSize(probe_location.cascade_index, c0_size);
-    
-    probe_location.dir_index = offset_in_cascade % cascade_size.dirs_count;
-    int probe_linear_index = offset_in_cascade / cascade_size.dirs_count;
-    probe_location.probe_index = ivec2(probe_linear_index % cascade_size.probes_count.x, probe_linear_index / cascade_size.probes_count.x);
-    return probe_location;
-}
-ivec3 PixelIndexToCubemapTexel(ivec2 face_size, int pixel_index)
-{
-    int face_pixels_count = face_size.x * face_size.y;
-    int face_index = pixel_index / face_pixels_count;
-    int face_pixel_index = pixel_index - face_pixels_count * face_index;
-    ivec2 face_pixel = ivec2(face_pixel_index % face_size.x, face_pixel_index / face_size.x);
-    return ivec3(face_pixel, face_index);
-}
-
-vec2 GetProbeScreenSize(int cascade_index, CascadeSize c0_size)
-{
-    vec2 c0_probe_screen_size = vec2(1.0f) / vec2(c0_size.probes_count);
-    return c0_probe_screen_size * float(1 << (SPATIAL_SCALE_FACTOR * cascade_index));
-}
-
-BilinearSamples GetProbeBilinearSamples(vec2 screen_pos, int cascade_index, CascadeSize c0_size)
-{
-    vec2 probe_screen_size = GetProbeScreenSize(cascade_index, c0_size);
-    
-    vec2 prev_probe_index2f = screen_pos / probe_screen_size - probe_center;    
-    return GetBilinearSamples(prev_probe_index2f);
-}
-
-vec2 GetProbeScreenPos(vec2 probe_index2f, int cascade_index, CascadeSize c0_size)
-{
-    vec2 probe_screen_size = GetProbeScreenSize(cascade_index, c0_size);
-    
-    return (probe_index2f + probe_center) * probe_screen_size;
-}
-
-vec2 GetProbeDir(float dir_indexf, int dirs_count)
-{
-    float ang_ratio = (dir_indexf + 0.5f) / float(dirs_count);
-    float ang = ang_ratio * 2.0f * PI;
-    return vec2(cos(ang), sin(ang));
-}
-
-float GetDirIndexf(vec2 dir, int dirs_count)
-{
-    float ang = atan(dir.y, dir.x);
-    float ang_ratio = ang / (2.0f * PI);
-    return ang_ratio * float(dirs_count) - 0.5f;
-}
-
-vec4 MergeIntervals(vec4 near_interval, vec4 far_interval)
-{
-    //return near_interval + far_interval;
-    return vec4(near_interval.rgb + near_interval.a * far_interval.rgb, near_interval.a * far_interval.a);
-}
-
-const int KEY_SPACE = 32;
-const int KEY_1 = 49;
-
-#ifndef HW_PERFORMANCE
-// uniform vec4 iMouse;
-// uniform sampler2D iChannel2;
-uniform float iTime;
-#endif
-
-bool keyToggled(int keyCode) {
-    return false;
-    // return texelFetch(iChannel2, ivec2(keyCode, 2), 0).r > 0.0;
-}
-
-vec3 hsv2rgb(vec3 c) {
-    vec3 rgb = clamp(
-        abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0,
-        0.0,
-        1.0
-    );
-	return c.z * mix(vec3(1.0), rgb, c.y);
-}
-
-vec3 getEmissivity() {
-    return !keyToggled(KEY_SPACE)
-        ? pow(hsv2rgb(vec3(iTime * 0.2 + 0.0f, 1.0, 2.5)), vec3(2.2))
-        : vec3(0.0);
-}
-
-float sdCircle(vec2 p, vec2 c, float r) {
-    return distance(p, c) - r;
-}
-
-float sdSegment(vec2 p, vec2 a, vec2 b) {
-    vec2 ap = p - a;
-    vec2 ab = b - a;
-    return distance(ap, ab * clamp(dot(ap, ab) / dot(ab, ab), 0.0, 1.0));
-}
-
-vec4 sampleDrawing(sampler2D drawingTex, vec2 P) {
-    // Return the drawing (in the format listed at the top of Buffer B) at P
-    vec4 data = texture(drawingTex, P / vec2(textureSize(drawingTex, 0)));
-    
-    // if (keyToggled(KEY_1) && iMouse.z > 0.0) {
-    //     float radius = brushRadius * screenRes.y;
-    //     //float sd = sdCircle(P, iMouse.xy + 0.5, radius);
-    //     float sd = sdSegment(P, abs(iMouse.zw) + 0.5, iMouse.xy + 0.5) - radius;
-        
-    //     if (sd <= max(data.r, 0.0)) {
-    //         data = vec4(min(sd, data.r), getEmissivity());
-    //     }
-    // }
-
-    return data;
-}
-
-float sdDrawing(sampler2D drawingTex, vec2 P) {
-    // Return the signed distance for the drawing at P
-    return sampleDrawing(drawingTex, P).r;
-}
-
-vec2 intersectAABB(vec2 ro, vec2 rd, vec2 a, vec2 b) {
-    // Return the two intersection t-values for the intersection between a ray
-    // and an axis-aligned bounding box
-    vec2 ta = (a - ro) / rd;
-    vec2 tb = (b - ro) / rd;
-    vec2 t1 = min(ta, tb);
-    vec2 t2 = max(ta, tb);
-    vec2 t = vec2(max(t1.x, t1.y), min(t2.x, t2.y));
-    return t.x > t.y ? vec2(-1.0) : t;
-}
-
-
-
-float intersect(sampler2D sdf_tex, vec2 ro, vec2 rd, float tMax) {
-    // Return the intersection t-value for the intersection between a ray and
-    // the SDF drawing from Buffer B
-    screenRes = vec2(textureSize(sdf_tex, 0));
-    float tOffset = 0.0;
-    // First clip the ray to the screen rectangle
-    vec2 tAABB = intersectAABB(ro, rd, vec2(0.0001), screenRes - 0.0001);
-    
-    if (tAABB.x > tMax || tAABB.y < 0.0) {
-        return -1.0;
-    }
-    
-    if (tAABB.x > 0.0) {
-        ro += tAABB.x * rd;
-        tOffset += tAABB.x;
-        tMax -= tAABB.x;
-    }
-    
-    if (tAABB.y < tMax) {
-        tMax = tAABB.y;
-    }
-
-    float t = 0.0;
-
-    for (int i = 0; i < 100; i++) {
-        float d = sdDrawing(sdf_tex, ro + rd * t);
-        
-        t += (d);
-        if ((d) < 0.01)
-            return t;
-
-        if (t >= tMax) {
-            break;
-        }
-    }
-
-    return -1.0;
-}
-
-struct RayHit
-{
-    vec4 radiance;
-    float dist;
-};
-#if MERGE_FIX != 3 //Dolkar fix works better if miss rays terminate instead of being infinite
-RayHit radiance(sampler2D sdf_tex, vec2 ro, vec2 rd, float tMax) {
-    // Returns the radiance and visibility term for a ray
-    vec4 p = sampleDrawing(sdf_tex, ro);
-    float t = 1e6f;
-    if (p.r > 0.0) {
-        t = intersect(sdf_tex, ro, rd, tMax);
-        
-        if (t == -1.0) {
-            return RayHit(vec4(0.0, 0.0, 0.0, 1.0), 1e5f);
-        }
-
-        p = sampleDrawing(sdf_tex, ro + rd * t);
-    }
-
-    return RayHit(vec4(p.gba, 0.0), t);
-}
-#else
-RayHit radiance(sampler2D sdf_tex, vec2 ro, vec2 rd, float tMax) {
-    // Returns the radiance and visibility term for a ray
-    vec4 p = sampleDrawing(sdf_tex, ro);
-    if (p.r > 0.0) {
-        float t = intersect(sdf_tex, ro, rd, tMax);
-        
-        if (t == -1.0) {
-            return RayHit(vec4(0.0, 0.0, 0.0, 1.0), 1e5f);
-        }
-
-        p = sampleDrawing(sdf_tex, ro + rd * t);
-        return RayHit(vec4(p.gba, 0.0), t);
-    } else {
-        return RayHit(vec4(0.0), 0.0);
-    }
-}
-#endif
-`;
-
-const bufferAShaderSrc = `#version 300 es
-precision highp float;
-uniform sampler2D iChannel0;
-uniform vec2 resolution;  
-out vec4 fragColor;
-${commonShaderSrc}
-void main() {
-    vec2 uv = gl_FragCoord.xy / resolution.xy;
-    vec4 color = texture(iChannel0, uv);
-    // Buffer A logic
-    fragColor = color;
-}
-`;
-
-const bufferBShaderSrc = `#version 300 es
-precision highp float;
-uniform sampler2D iChannel0;  // Input from Common
-uniform vec2 resolution;
-uniform vec4 iMouse;
-out vec4 fragColor;
-${commonShaderSrc} 
-
-float sdCapsule(vec2 p, vec2 a, vec2 b, float r) {
-    vec2 pa = p - a;
-    vec2 ba = b - a;
-    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-    return length(pa - ba * h) - r;
-}
-
-float sdOne(vec2 p) {
-    vec2 a = vec2(100.0, 150.0);  // Start of the "1" segment in pixels
-    vec2 b = vec2(100.0, 350.0);  // End of the "1" segment in pixels
-    float r = 20.0;               // Thickness of the "1" in pixels
-    return sdCapsule(p, a, b, r);
-}
-
-float sdSquare(vec2 p, vec2 center, vec2 size) {
-    vec2 d = abs(p - center) - size;
-    return max(d.x, d.y);
-}
-    
-float sdThree(vec2 p) {
-    // Parameters for the top circle
-    vec2 topCircleCenter = vec2(200.0, 300.0);  // Center of top circle in pixels
-    float topCircleRadius = 50.0;               // Radius of top circle in pixels
-    
-    // Parameters for the bottom circle
-    vec2 bottomCircleCenter = vec2(200.0, 400.0);  // Center of bottom circle in pixels
-    float bottomCircleRadius = 50.0;               // Radius of bottom circle in pixels
-    
-    // Square to cut off the left half
-    vec2 squareCenter = vec2(150.0, 350.0);   // Center of the cutting square
-    vec2 squareSize = vec2(50.0, 150.0);      // Size of the cutting square
-    
-    // SDFs for the circles
-    float topCircleSDF = sdCircle(p, topCircleCenter, topCircleRadius);
-    float bottomCircleSDF = sdCircle(p, bottomCircleCenter, bottomCircleRadius);
-    
-    // SDF for the cutting square
-    float squareSDF = sdSquare(p, squareCenter, squareSize);
-    
-    // Cut the circles using the square SDF
-    topCircleSDF = max(topCircleSDF, -squareSDF);
-    bottomCircleSDF = max(bottomCircleSDF, -squareSDF);
-    
-    // Combine the SDFs for the top and bottom parts of the "3"
-    return min(topCircleSDF, bottomCircleSDF);
-}
-
-
-float sdThirteen(vec2 p) {
-    // Offset positions for "1" and "3"
-    vec2 onePos = p + vec2(-0.6, 0.0);
-    vec2 threePos = p + vec2(0.6, 0.0);
-    
-    // Compute the SDFs for "1" and "3"
-    float oneSDF = sdOne(onePos);
-    float threeSDF = sdThree(threePos);
-    
-    // Combine the SDFs
-    return min(oneSDF, threeSDF);
-}
-
-void main() {
-#define GRID_WIDTH 3
-#define GRID_HEIGHT 3
-#define NUM_CAPSULES (GRID_WIDTH * GRID_HEIGHT)
-
-// Calculate the center of the screen
-vec2 center = resolution.xy * 0.5;
-
-// Position of the current fragment relative to the center
-vec2 p = gl_FragCoord.xy - center;
-
-// Time-dependent parameters
-float time = iTime;
-
-// Arrays to store individual capsule properties
-vec2 positions[NUM_CAPSULES];
-float rotations[NUM_CAPSULES];
-vec3 colors[NUM_CAPSULES];
-float lengths[NUM_CAPSULES];
-float radii[NUM_CAPSULES];
-
-// Initialize capsule properties
-float gridSpacingX = resolution.x * 0.8 / float(GRID_WIDTH);
-float gridSpacingY = resolution.y * 0.8 / float(GRID_HEIGHT);
-vec2 gridOffset = vec2(-gridSpacingX * float(GRID_WIDTH - 1) * 0.5,
-                       -gridSpacingY * float(GRID_HEIGHT - 1) * 0.5);
-
-for (int y = 0; y < GRID_HEIGHT; y++) {
-    for (int x = 0; x < GRID_WIDTH; x++) {
-        int i = y * GRID_WIDTH + x;
-        positions[i] = gridOffset + vec2(float(x) * gridSpacingX, float(y) * gridSpacingY);
-        rotations[i] = time * (.0 + float(i) * 0.2);
-        colors[i] = vec3(0.5 + 0.5 * sin(time + 4.0*float(i)),
-                         0.5 + 0.5 * cos(time * 1.5 + float(i)),
-                         0.5 + 0.5 * sin(time * 2.0 + float(i)));
-
-        // Every 3rd capsule is black, without a conditional
-        colors[i] = mix(colors[i], vec3(0.0), float(i % 1 == 0));
-        
-        lengths[i] = 60.0 + 20.0 * sin(time * 0.5 + float(i));
-        radii[i] = 20.0 + 10.0 * cos(time * 0.7 + float(i));
-    }
-}
-
-float minDist = 1e10;
-vec3 finalColor = vec3(0.0);
-
-for (int i = 0; i < NUM_CAPSULES; i++) {
-    // Define the endpoints of the capsule in pixel space
-    vec2 a = vec2(-lengths[i], 0.0);
-    vec2 b = vec2(lengths[i], 0.0);
-
-    // Rotate the capsule
-    mat2 rotation = mat2(cos(rotations[i]), -sin(rotations[i]),
-                         sin(rotations[i]), cos(rotations[i]));
-    a = rotation * a;
-    b = rotation * b;
-
-    // Translate the capsule
-    a += positions[i];
-    b += positions[i];
-
-    // Calculate the SDF of the capsule
-    float sd = sdThirteen(p);
-
-    // Update the minimum distance and color if this capsule is closer
-    if (sd < minDist) {
-        minDist = sd;
-        finalColor = colors[i];
-    }
-}
-
-// Add a circle at the mouse position
-float mouseRadius = 30.0;
-vec2 mousePos = iMouse.xy - center;
-
-// Calculate the SDF of the circle at the mouse position
-float sdCircle = sdCircle(p, mousePos, mouseRadius);
-
-// Determine the circle color based on the mouse state
-vec3 circleColor;
-if (iMouse.z > 0.0) {
-    circleColor = vec3(0.0, 1.0, 0.0); // Red color if mouse is down
-} else if (iMouse.w > 0.0) {
-    circleColor = vec3(0.0, 1.0, 0.0); // Green color if mouse is clicked
-} else {
-    circleColor = vec3(0.0, 0.0, 0.0); // Default blue color
-}
-
-// Check if the circle is closer than the closest capsule
-if (sdCircle < minDist) {
-    minDist = sdCircle;
-    finalColor = circleColor;
-}
-
-// Output the final color
-fragColor = vec4(minDist, finalColor);
-
-//  // Calculate the center of the screen
-  //   vec2 center = resolution.xy * 0.5;
-
-  //   // Position of the current fragment relative to the center
-  //   vec2 p = gl_FragCoord.xy - center;
-
-  //   // Time-dependent parameters
-  //   float time = iTime;
-  //   float capsuleLength = 100.0 + 50.0 * sin(time * 0.5); // Varying length of the capsule in pixels
-  //   float capsuleRadius = 50.0 + 25.0 * cos(time * 0.7);  // Varying radius of the capsule in pixels
-  //   float rotationAngle = time * 6.0; // Rotation angle over time
-
-  //   // Define the endpoints of the capsule in pixel space
-  //   vec2 a = vec2(-capsuleLength, 0.0);
-  //   vec2 b = vec2( capsuleLength, 0.0);
-
-  //   // Rotate the capsule by the rotation angle
-  //   mat2 rotation = mat2(cos(rotationAngle), -sin(rotationAngle),
-  //                        sin(rotationAngle),  cos(rotationAngle));
-  //   a = rotation * a;
-  //   b = rotation * b;
-
-  //   // Calculate the SDF of the capsule relative to the center
-  //   float sd = sdCapsule(p, a, b, capsuleRadius);
-
-  //   float sdCircle1 = sdCircle(p, vec2(-100.0, 0.0), 50.0);
-
-
-  //   // Emissivity (color) changes over time, but each SDF is different
-  //   vec3 emissivity = vec3(0.5 + 0.5 * sin(time * 2.0),
-  //                          0.5 + 0.5 * cos(time * 1.5),
-  //                          0.5 + 0.5 * sin(time * 1.0));
-    
-  //   vec3 colorCapsule = vec3(1.0, 0.5, 0.0); // Orange color for the capsule
-  //   vec3 colorCircle = vec3(0.0, 0.5, 1.0);  // Blue color for the circle
-
-  //   if (sd < sdCircle1) {
-  //       fragColor = vec4(sd, colorCapsule);
-  //   } else {  
-  //       fragColor = vec4(sdCircle1, colorCircle);
-  //   }
-    
-
-    // Combined SDF
-    // float combinedSDF = min(sd, sdCircle1);
-
-    // fragColor = vec4(combinedSDF, emissivity);
-}
-
-`;
-
-const cubeAShaderSrc = `#version 300 es
-precision highp float;
-uniform samplerCube iChannel0;
-uniform sampler2D iChannel1; 
-uniform vec2 resolution;  
-${commonShaderSrc}
-
-
-// This buffer calculates and merges radiance cascades. Normally the
-// merging would happen within one frame (like a mipmap calculation),
-// meaning this technique actually has no termporal lag - but since
-// Shadertoy has no way of running a pass multiple times per frame, we 
-// have to resort to spreading out the merging of cascades over multiple
-// frames.
-
-
-
-
-
-
-vec3 integrateSkyRadiance_(vec2 angle) {
-    // Sky radiance helper function
-    float a1 = angle[1];
-    float a0 = angle[0];
-    
-    // Sky integral formula taken from
-    // Analytic Direct Illumination - Mathis
-    // https://www.shadertoy.com/view/NttSW7
-    const vec3 SkyColor = vec3(0.2,0.5,1.);
-    const vec3 SunColor = vec3(1.,0.7,0.1)*10.;
-    const float SunA = 2.0;
-    const float SunS = 64.0;
-    const float SSunS = sqrt(SunS);
-    const float ISSunS = 1./SSunS;
-    vec3 SI = SkyColor*(a1-a0-0.5*(cos(a1)-cos(a0)));
-    SI += SunColor*(atan(SSunS*(SunA-a0))-atan(SSunS*(SunA-a1)))*ISSunS;
-    return SI / 6.0;
-}
-
-vec3 integrateSkyRadiance(vec2 angle) {
-    // Integrate the radiance from the sky over an interval of directions
-    if (angle[1] < 2.0 * PI) {
-        return integrateSkyRadiance_(angle);
-    }
-    
-    return
-        integrateSkyRadiance_(vec2(angle[0], 2.0 * PI)) +
-        integrateSkyRadiance_(vec2(0.0, angle[1] - 2.0 * PI));
-}
-
-vec4 CastMergedInterval(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
-{
-    ivec2 face_size = textureSize(iChannel0, 0);    
-    ivec2 viewport_size = textureSize(iChannel1, 0);
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
-
-    vec2 ray_start = screen_pos * vec2(viewport_size) + dir * interval_length.x;
-    vec2 ray_end = screen_pos * vec2(viewport_size) + dir * interval_length.y;                
-
-    RayHit ray_hit = radiance(iChannel1, ray_start, normalize(ray_end - ray_start), length(ray_end - ray_start));
-
-    BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, prev_cascade_index, c0_size);
-    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-    vec4 prev_interp_interval = vec4(0.0f);
-    for(int i = 0; i < 4; i++)
-    {
-        ProbeLocation prev_probe_location;
-        prev_probe_location.cascade_index = prev_cascade_index;
-        prev_probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-        prev_probe_location.dir_index = prev_dir_index;
-
-
-        int pixel_index = ProbeLocationToPixelIndex(prev_probe_location, c0_size);
-        ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
-
-        vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        if(prev_cascade_index < nCascades)
-            prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
-
-        prev_interp_interval += prev_interval * weights[i];
-    }
-    return MergeIntervals(ray_hit.radiance, prev_interp_interval);
-}
-
-vec4 InterpProbeDir(ivec2 probe_index, int cascade_index, float dir_indexf)
-{
-    ivec2 face_size = textureSize(iChannel0, 0);    
-    ivec2 viewport_size = textureSize(iChannel1, 0);
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    CascadeSize cascade_size = GetCascadeSize(cascade_index, c0_size);
-    
-    vec4 interp_interval = vec4(0.0f);
-    LinearSamples dir_samples = GetLinearSamples(dir_indexf);
-    vec2 weights = GetLinearWeights(dir_samples.ratio);
-    for(int i = 0; i < 2; i++)
-    {
-        ProbeLocation probe_location;
-        probe_location.cascade_index = cascade_index;
-        probe_location.probe_index = probe_index;
-        probe_location.dir_index = (dir_samples.base_index + i + cascade_size.dirs_count) % cascade_size.dirs_count;
-        
-        int pixel_index = ProbeLocationToPixelIndex(probe_location, c0_size);
-        ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
-        
-        vec4 prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
-        interp_interval += prev_interval * weights[i];
-    }
-    return interp_interval;
-}
-
-vec4 CastMergedIntervalParallaxFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
-{
-    ivec2 face_size = textureSize(iChannel0, 0);    
-    ivec2 viewport_size = textureSize(iChannel1, 0);
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
-    
-    vec2 ray_start = screen_pos * vec2(viewport_size) + dir * interval_length.x;
-    vec2 ray_end = screen_pos * vec2(viewport_size) + dir * interval_length.y;                
-
-    RayHit ray_hit = radiance(iChannel1, ray_start, normalize(ray_end - ray_start), length(ray_end - ray_start));
-
-    BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, prev_cascade_index, c0_size);
-    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-    vec4 prev_interp_interval = vec4(0.0f);
-    for(int i = 0; i < 4; i++)
-    {
-        ivec2 prev_probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-        vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_index), prev_cascade_index, c0_size);
-        float prev_dir_indexf = GetDirIndexf(ray_end - prev_screen_pos * vec2(viewport_size), prev_cascade_size.dirs_count);
-        vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        if(prev_cascade_index < nCascades)
-            prev_interval = InterpProbeDir(
-                prev_probe_index,
-                prev_cascade_index,
-                prev_dir_indexf);
-
-        prev_interp_interval += prev_interval * weights[i];
-    }
-    return MergeIntervals(ray_hit.radiance, prev_interp_interval);
-}
-
-
-vec4 CastMergedIntervalBilinearFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
-{
-    ivec2 face_size = textureSize(iChannel0, 0);    
-    ivec2 viewport_size = textureSize(iChannel1, 0);
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
-    
-    BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, prev_cascade_index, c0_size);
-    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-    vec4 merged_interval = vec4(0.0f);
-    for(int i = 0; i < 4; i++)
-    {
-        ProbeLocation prev_probe_location;
-        prev_probe_location.cascade_index = prev_cascade_index;
-        prev_probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-        prev_probe_location.dir_index = prev_dir_index;
-
-
-        int pixel_index = ProbeLocationToPixelIndex(prev_probe_location, c0_size);
-        ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
-
-        vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        if(prev_cascade_index < nCascades) {
-            prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
-        }
-        vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_location.probe_index), prev_probe_location.cascade_index, c0_size);
-
-        vec2 ray_start = screen_pos * vec2(viewport_size) + dir * interval_length.x;
-        vec2 ray_end = prev_screen_pos * vec2(viewport_size) + dir * interval_length.y;                
-
-        RayHit ray_hit = radiance(iChannel1, ray_start, normalize(ray_end - ray_start), length(ray_end - ray_start));
-
-        merged_interval += MergeIntervals(ray_hit.radiance, prev_interval) * weights[i];
-    }
-    return merged_interval;
-}
-
-
-vec4 CastMergedIntervalMidpointBilinearFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
-{
-
-    ivec2 face_size = textureSize(iChannel0, 0);    
-    ivec2 viewport_size = textureSize(iChannel1, 0);
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
-    vec2 probe_screen_size = GetProbeScreenSize(prev_cascade_index, c0_size);
-
-    float midpoint_length = max(interval_length.x, interval_length.y - probe_screen_size.x * float(viewport_size.x) * 1.5f);
-    
-    vec2 ray_start_1 = screen_pos * vec2(viewport_size) + dir * interval_length.x;
-    vec2 ray_end_1 = screen_pos * vec2(viewport_size) + dir * midpoint_length;                
-
-    RayHit ray_hit_1 = radiance(iChannel1, ray_start_1, normalize(ray_end_1 - ray_start_1), length(ray_end_1 - ray_start_1));
-
-    
-    BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, prev_cascade_index, c0_size);
-    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-    vec4 merged_interval = vec4(0.0f);
-    for(int i = 0; i < 4; i++)
-    {
-        ProbeLocation prev_probe_location;
-        prev_probe_location.cascade_index = prev_cascade_index;
-        prev_probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-        prev_probe_location.dir_index = prev_dir_index;
-
-
-        int pixel_index = ProbeLocationToPixelIndex(prev_probe_location, c0_size);
-        ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
-
-        vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        if(prev_cascade_index < nCascades)
-            prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
-
-        vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_location.probe_index), prev_probe_location.cascade_index, c0_size);
-
-        vec2 ray_start_2 = ray_end_1;
-        vec2 ray_end_2 = prev_screen_pos * vec2(viewport_size) + dir * interval_length.y;                
-
-        RayHit ray_hit_2 = radiance(iChannel1, ray_start_2, normalize(ray_end_2 - ray_start_2), length(ray_end_2 - ray_start_2));
-        
-        vec4 combined_interval = MergeIntervals(ray_hit_1.radiance, ray_hit_2.radiance);
-        merged_interval += MergeIntervals(combined_interval, prev_interval) * weights[i];
-    }
-    return merged_interval;
-}
-
-vec4 CastMergedIntervalMaskFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
-{
-
-    ivec2 face_size = textureSize(iChannel0, 0);    
-    ivec2 viewport_size = textureSize(iChannel1, 0);
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
-    vec2 probe_screen_size = GetProbeScreenSize(prev_cascade_index, c0_size);
-
-    vec2 ray_start = screen_pos * vec2(viewport_size) + dir * interval_length.x;
-    vec2 ray_end = screen_pos * vec2(viewport_size) + dir * (interval_length.y + probe_screen_size.x * float(viewport_size.x) * 3.0f); 
-
-    vec2 ray_dir = normalize(ray_end - ray_start);
-    RayHit ray_hit = radiance(iChannel1, ray_start, ray_dir, length(ray_end - ray_start));
-
-    BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, prev_cascade_index, c0_size);
-    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-    
-    vec4 masks;
-    for(int i = 0; i < 4; i++)
-    {
-        ivec2 prev_probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-        vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_index), prev_cascade_index, c0_size);
-        
-        float max_hit_dist = dot(prev_screen_pos * vec2(viewport_size) + ray_dir * interval_length.y - ray_start, ray_dir);
-        masks[i] = ray_hit.dist > max_hit_dist ? 0.0f : 1.0f;
-    }
-    
-    float interp_mask = dot(masks, weights);
-    
-    vec4 ray_interval = ray_hit.radiance;
-    // https://www.desmos.com/calculator/2oxzmwlwhi
-    ray_interval.a = 1.0 - (1.0 - ray_interval.a) * interp_mask;
-    ray_interval.rgb *= 1.0 - ray_interval.a * (1.0 - interp_mask);
-    
-    vec4 prev_interp_interval = vec4(0.0f);
-    for(int i = 0; i < 4; i++)
-    {
-        ProbeLocation prev_probe_location;
-        prev_probe_location.cascade_index = prev_cascade_index;
-        prev_probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-        prev_probe_location.dir_index = prev_dir_index;
-
-
-        int pixel_index = ProbeLocationToPixelIndex(prev_probe_location, c0_size);
-        ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
-
-        vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        if(prev_cascade_index < nCascades)
-            prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
-        prev_interp_interval += prev_interval * weights[i];
-    }
-    return MergeIntervals(ray_interval, prev_interp_interval);
-}
-
-vec4 CastInterpProbeDir(ivec2 probe_index, int cascade_index, vec2 interval_length, float dir_indexf)
-{
-    ivec2 face_size = textureSize(iChannel0, 0);    
-    ivec2 viewport_size = textureSize(iChannel1, 0);
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    CascadeSize cascade_size = GetCascadeSize(cascade_index, c0_size);
-    
-    vec2 probe_screen_pos = GetProbeScreenPos(vec2(probe_index), cascade_index, c0_size);
-
-    vec4 interp_interval = vec4(0.0f);
-    LinearSamples dir_samples = GetLinearSamples(dir_indexf);
-    vec2 weights = GetLinearWeights(dir_samples.ratio);
-    for(int i = 0; i < 2; i++)
-    {
-        int dir_index = (dir_samples.base_index + i + cascade_size.dirs_count) % cascade_size.dirs_count;
-        vec2 ray_dir = GetProbeDir(float(dir_index), cascade_size.dirs_count);
-        
-        vec2 ray_start = probe_screen_pos * vec2(viewport_size) + ray_dir * interval_length.x;
-        vec2 ray_end = probe_screen_pos * vec2(viewport_size) + ray_dir * interval_length.y;                
-
-        RayHit ray_hit = radiance(iChannel1, ray_start, normalize(ray_end - ray_start), length(ray_end - ray_start));
-        interp_interval += ray_hit.radiance * weights[i];
-    }
-    return interp_interval;
-}
-
-vec4 CastMergedIntervalInnerParallaxFix(ivec2 probe_index, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
-{
-    ivec2 face_size = textureSize(iChannel0, 0);    
-    ivec2 viewport_size = textureSize(iChannel1, 0);
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
-    int cascade_index = prev_cascade_index - 1;
-    CascadeSize cascade_size = GetCascadeSize(cascade_index, c0_size);
-    vec2 probe_screen_pos = GetProbeScreenPos(vec2(probe_index), cascade_index, c0_size);
-    BilinearSamples bilinear_samples = GetProbeBilinearSamples(probe_screen_pos, prev_cascade_index, c0_size);
-    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-    vec4 merged_interval = vec4(0.0f);
-    for(int i = 0; i < 4; i++)
-    {
-        ProbeLocation prev_probe_location;
-        prev_probe_location.cascade_index = prev_cascade_index;
-        prev_probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-        prev_probe_location.dir_index = prev_dir_index;
-
-
-        int pixel_index = ProbeLocationToPixelIndex(prev_probe_location, c0_size);
-        ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
-
-        vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        if(prev_cascade_index < nCascades)
-            prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
-
-        vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_location.probe_index), prev_probe_location.cascade_index, c0_size);
-
-        vec2 ray_start = probe_screen_pos * vec2(viewport_size) + dir * interval_length.x;
-        vec2 ray_end = prev_screen_pos * vec2(viewport_size) + dir * interval_length.y;
-        
-        vec2 ray_dir = normalize(ray_end - ray_start);
-        float dir_indexf = GetDirIndexf(ray_dir, cascade_size.dirs_count);
-
-        vec4 ray_hit_radiance = CastInterpProbeDir(probe_index, cascade_index, interval_length, dir_indexf);
-        merged_interval += MergeIntervals(ray_hit_radiance, prev_interval) * weights[i];
-    }
-    return merged_interval;
-}
-
-
-void mainCubemap(out vec4 fragColor, vec2 fragCoord, vec3 fragRO, vec3 fragRD) {
-    // Calculate the index for this cubemap texel
-    int face;
-    
-    if (abs(fragRD.x) > abs(fragRD.y) && abs(fragRD.x) > abs(fragRD.z)) {
-        face = fragRD.x > 0.0 ? 0 : 1;
-    } else if (abs(fragRD.y) > abs(fragRD.z)) {
-        face = fragRD.y > 0.0 ? 2 : 3;
-    } else {
-        face = fragRD.z > 0.0 ? 4 : 5;
-    }
-    
-    ivec2 face_size = textureSize(iChannel0, 0);
-    
-    ivec2 face_pixel = ivec2(fragCoord.xy);
-    int face_index = face;
-    int pixel_index = face_pixel.x + face_pixel.y * face_size.x + face_index * (face_size.x * face_size.y);
-    
-    ivec2 viewport_size = textureSize(iChannel1, 0);
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    ProbeLocation probe_location = PixelIndexToProbeLocation(pixel_index, c0_size);
-    
-    if(probe_location.cascade_index >= nCascades)
-    {
-        fragColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        return;
-    }
-    vec2 interval_overlap = vec2(1.0f, 1.0f);
-    #if MERGE_FIX == 4 || MERGE_FIX == 5 //parallax fix works better with overlapping intervals
-        interval_overlap = vec2(1.0f, 1.1f);
-    #endif
-    vec2 interval_length = GetCascadeIntervalScale(probe_location.cascade_index) * GetC0IntervalLength(viewport_size) * interval_overlap;
-    CascadeSize cascade_size = GetCascadeSize(probe_location.cascade_index, c0_size);
-    int prev_cascade_index = probe_location.cascade_index + 1;
-    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
-    
-    vec2 screen_pos = GetProbeScreenPos(vec2(probe_location.probe_index), probe_location.cascade_index, c0_size);
-    
-    int avg_dirs_count = prev_cascade_size.dirs_count / cascade_size.dirs_count;
-    
-    vec4 merged_avg_interval = vec4(0.0f);
-    for(int dir_number = 0; dir_number < avg_dirs_count; dir_number++)
-    {
-        int prev_dir_index = probe_location.dir_index * avg_dirs_count + dir_number;
-        vec2 ray_dir = GetProbeDir(float(prev_dir_index), prev_cascade_size.dirs_count);
-        
-        #if MERGE_FIX == 0
-            vec4 merged_inteval = CastMergedInterval(screen_pos, ray_dir, interval_length, prev_cascade_index, prev_dir_index);
-        #elif MERGE_FIX == 1
-            vec4 merged_inteval = CastMergedIntervalBilinearFix(screen_pos, ray_dir, interval_length, prev_cascade_index, prev_dir_index);
-        #elif MERGE_FIX == 2
-            vec4 merged_inteval = CastMergedIntervalMidpointBilinearFix(screen_pos, ray_dir, interval_length, prev_cascade_index, prev_dir_index);
-        #elif MERGE_FIX == 3
-            vec4 merged_inteval = CastMergedIntervalMaskFix(screen_pos, ray_dir, interval_length, prev_cascade_index, prev_dir_index);
-        #elif MERGE_FIX == 4
-            vec4 merged_inteval = CastMergedIntervalParallaxFix(screen_pos, ray_dir, interval_length, prev_cascade_index, prev_dir_index);
-        #elif MERGE_FIX == 5
-            vec4 merged_inteval = CastMergedIntervalInnerParallaxFix(probe_location.probe_index, ray_dir, interval_length, prev_cascade_index, prev_dir_index);
-        #endif
-
-        // Integrate the sky radiance for the last cascade
-        if (probe_location.cascade_index == nCascades - 1) {
-            vec2 angle = vec2(prev_dir_index, prev_dir_index + 1) / float(prev_cascade_size.dirs_count) * 2.0 * PI;
-            merged_inteval.rgb += float(avg_dirs_count) * integrateSkyRadiance(angle) / (angle.y - angle.x);
-        }
-
-        merged_avg_interval += merged_inteval / float(avg_dirs_count);  
-    }
-    fragColor = merged_avg_interval;
-    // fragColor = vec4(0.0f, 1.0f, 0.0f, 1.0f);
-}
-
-uniform vec4 unViewport;
-uniform vec3 unCorners[5];
-out vec4 outColor;
-
-void main( void ) {
-  vec4 color = vec4(1e20);
-  vec3 ro = unCorners[4];
-  vec2 uv = (gl_FragCoord.xy - unViewport.xy)/unViewport.zw;
-  vec3 rd = normalize( mix( mix( unCorners[0], unCorners[1], uv.x ),mix( unCorners[3], unCorners[2], uv.x ), uv.y ) - ro);
-  mainCubemap( color, gl_FragCoord.xy-unViewport.xy, ro, rd );
-  outColor = color; 
-}
-
-`;
-
-const imageShaderSrc = `#version 300 es
-precision highp float;
-uniform samplerCube iChannel0; 
-uniform sampler2D iChannel1;
-uniform vec2 resolution;
-
-out vec4 fragColor;
-
-${commonShaderSrc}
-
-void main() {
-   
-    ivec2 viewport_size = ivec2(resolution.xy);
-    ivec2 face_size = textureSize(iChannel0, 0);
-    
-    vec2 screen_pos = gl_FragCoord.xy / vec2(viewport_size);
-
-    CascadeSize c0_size = GetC0Size(viewport_size);
-    int src_cascade_index = 0;
-    
-    CascadeSize cascade_size = GetCascadeSize(src_cascade_index, c0_size);
-    
-    BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, src_cascade_index, c0_size);
-    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-    
-    vec4 fluence = vec4(0.0f);
-    for(int dir_index = 0; dir_index < cascade_size.dirs_count; dir_index++)
-    {
-        #if C_MINUS1_GATHERING == 1
-            vec2 c0_dir = GetProbeDir(float(dir_index), c0_size.dirs_count);
-            vec2 c0_interval_length = GetCascadeIntervalScale(0) * GetC0IntervalLength(viewport_size);
-            vec4 c_minus1_radiance = radiance(iChannel1, screen_pos * vec2(viewport_size), c0_dir, c0_interval_length.x).radiance;
-        #else
-            vec4 c_minus1_radiance = vec4(vec3(0.0f), 1.0f);
-        #endif
-        
-        vec4 c0_radiance = vec4(0.0f);
-        for(int i = 0; i < 4; i++)
-        {
-            ProbeLocation probe_location;
-            probe_location.cascade_index = src_cascade_index;
-            probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), cascade_size.probes_count- ivec2(1));
-            probe_location.dir_index = dir_index;
-            
-            int pixel_index = ProbeLocationToPixelIndex(probe_location, c0_size);
-            ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
-            
-            
-            vec4 src_radiance = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
-            
-            c0_radiance += src_radiance * weights[i];
-        }
-        fluence += MergeIntervals(c_minus1_radiance, c0_radiance) / float(cascade_size.dirs_count);
-    }
-    
-    // Overlay actual SDF drawing to fix low resolution edges
-    // vec4 data = sampleDrawing(iChannel1, fragCoord);
-    // fluence = mix(fluence, data * 2.0 * PI, clamp(3.0 - data.r, 0.0, 1.0));
-    // Tonemap
-    //fragColor = vec4(pow(fluence / (fluence + 1.0), vec3(1.0/2.5)), 1.0);
-    fragColor = vec4(1.0 - 1.0 / pow(1.0 + fluence.rgb, vec3(2.5)), 1.0);
-}
-`;
+// const bufferAShaderSrc = `#version 300 es
+// precision highp float;
+// uniform sampler2D iChannel0;
+// uniform vec2 resolution;
+// out vec4 fragColor;
+// ${commonShaderSrc}
+// void main() {
+//     vec2 uv = gl_FragCoord.xy / resolution.xy;
+//     vec4 color = texture(iChannel0, uv);
+//     // Buffer A logic
+//     fragColor = color;
+// }
+// `;
 
 const vertexShaderSrc = `#version 300 es
 in vec2 position;
@@ -1313,19 +198,22 @@ void main() {
 let bufferATextureIndex = 0;
 let bufferBTextureIndex = 0;
 let cubeATextureIndex = 0;
+let geometricSdfTextureIndex = 0;
 
 // Setup WebGL and create shaders for each buffer
 // const commonShader = createShader(gl, gl.FRAGMENT_SHADER, commonShaderSrc);
-const bufferAShader = createShader(gl, gl.FRAGMENT_SHADER, bufferAShaderSrc);
+// const bufferAShader = createShader(gl, gl.FRAGMENT_SHADER, bufferAShaderSrc);
 const bufferBShader = createShader(gl, gl.FRAGMENT_SHADER, bufferBShaderSrc);
 const cubeAShader = createShader(gl, gl.FRAGMENT_SHADER, cubeAShaderSrc);
 const imageShader = createShader(gl, gl.FRAGMENT_SHADER, imageShaderSrc);
+const geometricSDFShader = createShader(gl, gl.FRAGMENT_SHADER, geometricsdffont);
 
 // const shaderProgram = createProgram(gl, vertexShaderSrc, commonShaderSrc);
-const bufferAProgram = createProgram(gl, vertexShaderSrc, bufferAShaderSrc);
+// const bufferAProgram = createProgram(gl, vertexShaderSrc, bufferAShaderSrc);
 const bufferBProgram = createProgram(gl, vertexShaderSrc, bufferBShaderSrc);
 const cubeAProgram = createProgram(gl, vertexShaderSrc, cubeAShaderSrc);
 const imageProgram = createProgram(gl, vertexShaderSrc, imageShaderSrc);
+const geometricSDFProgram = createProgram(gl, vertexShaderSrc, geometricsdffont);
 
 const setRenderTarget = (fbo: any) => {
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo.fbId);
@@ -1420,25 +308,33 @@ const renderCubemap = (face: number) => {
   drawQuad(gl);
 };
 
+// const sdfRenderer = new TinySDFRenderer();
+// const atlas = sdfRenderer.render(["A", "B", "C", "D", "1", "3", "L", "T"]);
+// Render geometric SDF to a float texture
+
 // Create the render loop
 function render() {
   if (!gl) return;
-  if (!bufferAProgram || !bufferBProgram || !cubeAProgram || !imageProgram) return;
+  if (!bufferBProgram || !cubeAProgram || !imageProgram || !geometricSDFProgram) return;
 
   // Toggle between the two textures
   bufferATextureIndex = 1 - bufferATextureIndex;
   bufferBTextureIndex = 1 - bufferBTextureIndex;
   cubeATextureIndex = 1 - cubeATextureIndex;
+  geometricSdfTextureIndex = 1 - geometricSdfTextureIndex;
 
   // Render to Buffer A
-  setRenderTarget(bufferA.targets[bufferATextureIndex]); // Ensure framebuffer is bound
+  //   setRenderTarget(bufferA.targets[bufferATextureIndex]); // Ensure framebuffer is bound
   // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, bufferA.textures[bufferATextureIndex], 0);  // Attach the texture
 
   // Use the other texture as input
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, bufferA.textures[1 - bufferATextureIndex]);
+  //   gl.activeTexture(gl.TEXTURE0);
+  //   gl.bindTexture(gl.TEXTURE_2D, bufferA.textures[1 - bufferATextureIndex]);
 
-  useShader(gl, bufferAProgram);
+  //   useShader(gl, bufferAProgram);
+  //   drawQuad(gl);
+  setRenderTarget(geomtricSdfBuffer.targets[geometricSdfTextureIndex]); // Ensure framebuffer is bound
+  useShader(gl, geometricSDFProgram);
   drawQuad(gl);
 
   // Render to Buffer B
@@ -1446,9 +342,34 @@ function render() {
   // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, bufferB.textures[bufferBTextureIndex], 0);  // Attach the texture
 
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, bufferB.textures[1 - bufferBTextureIndex]);
+  gl.bindTexture(gl.TEXTURE_2D, geomtricSdfBuffer.textures[geometricSdfTextureIndex]);
+  gl.uniform1i(gl.getUniformLocation(bufferBProgram, "iChannel0"), 0);
 
   useShader(gl, bufferBProgram);
+
+  // We have a TinySDFRenderer class, that returns a canvas element
+  // We use this canvas element as a texture in the shader
+  // gl.activeTexture(gl.TEXTURE1);
+  // const texture = gl.createTexture();
+  // // Use the atlas canvas as a texture
+  // gl.bindTexture(gl.TEXTURE_2D, texture);
+
+  // // Set texture parameters
+  // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  // // Flip the Y axis
+  // gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  // // Upload the canvas as a texture
+
+  // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas);
+  // const textureLocation = gl.getUniformLocation(bufferBProgram, "iChannel1");
+
+  // Set the uniform to use texture unit 0
+  // gl.uniform1i(textureLocation, 1);
+
   const mouseLocation = gl.getUniformLocation(bufferBProgram, "iMouse");
   gl.uniform4f(mouseLocation, mouseX, mouseY, mouseDown, mouseClicked);
 
@@ -1613,11 +534,11 @@ function drawQuad(gl: WebGL2RenderingContext) {
   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 
-  if (!bufferAProgram) {
+  if (!bufferBProgram) {
     console.error("No bufferAProgram");
     return;
   }
-  const position = gl.getAttribLocation(bufferAProgram, "position");
+  const position = gl.getAttribLocation(bufferBProgram, "position");
   gl.enableVertexAttribArray(position);
   gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
 
