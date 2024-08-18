@@ -1,64 +1,51 @@
-const canvas = document.getElementById('glcanvas');
-const gl = canvas.getContext('webgl2');
+const canvas = <HTMLCanvasElement>document.getElementById("glcanvas");
+if (!canvas) {
+  throw new Error("No canvas found");
+}
+const gl = canvas.getContext("webgl2");
+if (!gl) {
+  throw new Error("No WebGL2 context found");
+}
 
-let mFloat32Textures;
-let mFloat32Filter;
-let mFloat16Textures;
-let mDrawBuffers;
-let mDepthTextures;
-let mDerivatives;
-let mFloat16Filter;
-let mShaderTextureLOD;
-let mAnisotropic;
-let mRenderToFloat32F;
-let mDebugShader;
-let mAsynchCompile;
-mFloat32Textures  = true;
-mFloat32Filter    = gl.getExtension( 'OES_texture_float_linear');
-mFloat16Textures  = true;
-mFloat16Filter    = gl.getExtension( 'OES_texture_half_float_linear' );
-mDerivatives      = true;
-mDrawBuffers      = true;
-mDepthTextures    = true;
-mShaderTextureLOD = true;
-mAnisotropic = gl.getExtension( 'EXT_texture_filter_anisotropic' );
-mRenderToFloat32F = gl.getExtension( 'EXT_color_buffer_float');
-mDebugShader = gl.getExtension('WEBGL_debug_shaders');
-mAsynchCompile = gl.getExtension('KHR_parallel_shader_compile');
+// const mFloat32Textures = true;
+gl.getExtension("OES_texture_float_linear");
+gl.getExtension("OES_texture_half_float_linear");
+gl.getExtension("EXT_color_buffer_float");
+// const mDebugShader = gl.getExtension("WEBGL_debug_shaders");
+// const mAsynchCompile = gl.getExtension("KHR_parallel_shader_compile");
 
 // Set the canvas size
-canvas.width = window.innerWidth;  // Set canvas width to window width
-canvas.height = window.innerHeight;  // Set canvas height to window height
+canvas.width = window.innerWidth; // Set canvas width to window width
+canvas.height = window.innerHeight; // Set canvas height to window height
 
 const mGl = {
   TEXTURE_2D: 0,
   TEXTURE_CUBE_MAP: 1,
-}
+};
 
 const CUBEMAP_RES = 1024;
 
 const cubemapBuffer = {
-    textures: [null, null], // 2 elements
-    targets: [null, null], // 2 elements
-    lastRenderDone: 0
-  }
+  textures: [null, null], // 2 elements
+  targets: [null, null], // 2 elements
+  lastRenderDone: 0,
+};
 
 const bufferA = {
-    textures: [null, null], // 2 elements
-    targets: [null, null], // 2 elements
-    lastRenderDone: 0
-}
+  textures: [null, null], // 2 elements
+  targets: [null, null], // 2 elements
+  lastRenderDone: 0,
+};
 
 const bufferB = {
-    textures: [null, null], // 2 elements
-    targets: [null, null], // 2 elements
-    lastRenderDone: 0
-}
+  textures: [null, null], // 2 elements
+  targets: [null, null], // 2 elements
+  lastRenderDone: 0,
+};
 
 resizeBuffer(gl, bufferA);
 resizeBuffer(gl, bufferB);
 resizeCubemapBuffer(gl, cubemapBuffer);
-
 
 function resizeCanvas() {
   // Set the canvas size to match the new window size
@@ -66,28 +53,48 @@ function resizeCanvas() {
   canvas.height = window.innerHeight;
 
   // Recreate the textures for each framebuffer
-  resizeBuffer(gl, bufferA);
-  resizeBuffer(gl, bufferB);
+  gl && resizeBuffer(gl, bufferA);
+  gl && resizeBuffer(gl, bufferB);
   // Cubemap is fixed size
   // resizeCubemapBuffer(gl, cubemapBuffer);
 
   // Update the WebGL viewport to match the new canvas size
-  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl && gl.viewport(0, 0, canvas.width, canvas.height);
 }
 
-window.addEventListener('resize', resizeCanvas);
+window.addEventListener("resize", resizeCanvas);
 
-function resizeBuffer(gl, fbObj) {
+// Store mouse position
+let mouseX = 0;
+let mouseY = 0;
+let mouseDown = 0;
+let mouseClicked = 0;
+
+// Update the mouse position on mouse move
+canvas.addEventListener("mousemove", (event) => {
+  mouseX = event.clientX;
+  mouseY = canvas.height - event.clientY; // Flip Y axis for WebGL
+});
+
+canvas.addEventListener("mousedown", (event) => {
+  mouseDown = 1;
+  mouseClicked = 1;
+});
+
+canvas.addEventListener("mouseup", (event) => {
+  mouseDown = 0;
+});
+
+function resizeBuffer(gl: WebGL2RenderingContext, fbObj: any) {
   const width = gl.canvas.width;
   const height = gl.canvas.height;
 
   // Resize textures[1] and [2] to match the new canvas size
-  let texture1 = createTexture(gl, width, height);
-  let texture2 = createTexture(gl, width, height);
+  const texture1 = createTexture(gl, width, height);
+  const texture2 = createTexture(gl, width, height);
 
-  let target1 = createRenderTarget(texture1);
-  let target2 = createRenderTarget(texture2);
-
+  const target1 = createRenderTarget(texture1);
+  const target2 = createRenderTarget(texture2);
 
   // // Destroy the old textures ???
   // gl.deleteTexture(fbObj.textures[0]);
@@ -96,48 +103,54 @@ function resizeBuffer(gl, fbObj) {
   // gl.deleteFramebuffer(fbObj.targets[0]);
   // gl.deleteFramebuffer(fbObj.targets[1]);
 
-  
   fbObj.textures = [texture1, texture2];
-  fbObj.targets = [target1, target2];  
+  fbObj.targets = [target1, target2];
 }
 
-function resizeCubemapBuffer(gl, fbObj) {
+function resizeCubemapBuffer(gl: WebGL2RenderingContext, fbObj: any) {
   const width = CUBEMAP_RES;
   const height = CUBEMAP_RES;
 
   // Resize textures[1] and [2] to match the new canvas size
-  let texture1 = createTexture(gl, width, height, mGl.TEXTURE_CUBE_MAP);
-  let texture2 = createTexture(gl, width, height, mGl.TEXTURE_CUBE_MAP);
+  const texture1 = createTexture(gl, width, height, mGl.TEXTURE_CUBE_MAP);
+  const texture2 = createTexture(gl, width, height, mGl.TEXTURE_CUBE_MAP);
 
-  let target1 = createRenderTargetCubemap(texture1);
-  let target2 = createRenderTargetCubemap(texture2);
+  const target1 = createRenderTargetCubemap(texture1);
+  const target2 = createRenderTargetCubemap(texture2);
 
   fbObj.textures = [texture1, texture2];
   fbObj.targets = [target1, target2];
 }
 
-
-function createTexture(gl, width, height, type = mGl.TEXTURE_2D) {
+function createTexture(
+  gl: WebGL2RenderingContext,
+  width: number,
+  height: number,
+  type = mGl.TEXTURE_2D,
+) {
   const texture = gl.createTexture();
-  if(type == mGl.TEXTURE_2D) {
+  if (type == mGl.TEXTURE_2D) {
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, width, height, 0, gl.RGBA, gl.FLOAT, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  } else if(type == mGl.TEXTURE_CUBE_MAP) {
+  } else if (type == mGl.TEXTURE_CUBE_MAP) {
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
-    width = 1024 // fixed 
-    height = 1024 // fixed
-    // This translates to:
-    // mGL.texImage2D( mGL.TEXTURE_CUBE_MAP_POSITIVE_X, 0, glFoTy.mGLFormat, xres, yres, 0, glFoTy.mGLExternal, glFoTy.mGLType, buffer );
-    // mGL.texImage2D( mGL.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, glFoTy.mGLFormat, xres, yres, 0, glFoTy.mGLExternal, glFoTy.mGLType, buffer );
-    // mGL.texImage2D( mGL.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, glFoTy.mGLFormat, xres, yres, 0, glFoTy.mGLExternal, glFoTy.mGLType, buffer );
-    // mGL.texImage2D( mGL.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, glFoTy.mGLFormat, xres, yres, 0, glFoTy.mGLExternal, glFoTy.mGLType, buffer );
-    // mGL.texImage2D( mGL.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, glFoTy.mGLFormat, xres, yres, 0, glFoTy.mGLExternal, glFoTy.mGLType, buffer );
-    // mGL.texImage2D( mGL.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, glFoTy.mGLFormat, xres, yres, 0, glFoTy.mGLExternal, glFoTy.mGLType, buffer );
+    width = 1024; // fixed
+    height = 1024; // fixed
     for (let i = 0; i < 6; i++) {
-      gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.FLOAT, null);
+      gl.texImage2D(
+        gl.TEXTURE_CUBE_MAP_POSITIVE_X + i,
+        0,
+        gl.RGBA16F,
+        width,
+        height,
+        0,
+        gl.RGBA,
+        gl.FLOAT,
+        null,
+      );
     }
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -168,7 +181,7 @@ const float MAGIC = 1e25;
 #define probe_center vec2(0.5f)
 
 #define BRANCHING_FACTOR 2
-#define SPATIAL_SCALE_FACTOR 2
+#define SPATIAL_SCALE_FACTOR 1
 
 struct CascadeSize
 {
@@ -403,7 +416,7 @@ const int KEY_SPACE = 32;
 const int KEY_1 = 49;
 
 #ifndef HW_PERFORMANCE
-uniform vec4 iMouse;
+// uniform vec4 iMouse;
 // uniform sampler2D iChannel2;
 uniform float iTime;
 #endif
@@ -571,7 +584,8 @@ void main() {
 const bufferBShaderSrc = `#version 300 es
 precision highp float;
 uniform sampler2D iChannel0;  // Input from Common
-uniform vec2 resolution;  
+uniform vec2 resolution;
+uniform vec4 iMouse;
 out vec4 fragColor;
 ${commonShaderSrc} 
 
@@ -582,9 +596,63 @@ float sdCapsule(vec2 p, vec2 a, vec2 b, float r) {
     return length(pa - ba * h) - r;
 }
 
+float sdOne(vec2 p) {
+    vec2 a = vec2(100.0, 150.0);  // Start of the "1" segment in pixels
+    vec2 b = vec2(100.0, 350.0);  // End of the "1" segment in pixels
+    float r = 20.0;               // Thickness of the "1" in pixels
+    return sdCapsule(p, a, b, r);
+}
+
+float sdSquare(vec2 p, vec2 center, vec2 size) {
+    vec2 d = abs(p - center) - size;
+    return max(d.x, d.y);
+}
+    
+float sdThree(vec2 p) {
+    // Parameters for the top circle
+    vec2 topCircleCenter = vec2(200.0, 300.0);  // Center of top circle in pixels
+    float topCircleRadius = 50.0;               // Radius of top circle in pixels
+    
+    // Parameters for the bottom circle
+    vec2 bottomCircleCenter = vec2(200.0, 400.0);  // Center of bottom circle in pixels
+    float bottomCircleRadius = 50.0;               // Radius of bottom circle in pixels
+    
+    // Square to cut off the left half
+    vec2 squareCenter = vec2(150.0, 350.0);   // Center of the cutting square
+    vec2 squareSize = vec2(50.0, 150.0);      // Size of the cutting square
+    
+    // SDFs for the circles
+    float topCircleSDF = sdCircle(p, topCircleCenter, topCircleRadius);
+    float bottomCircleSDF = sdCircle(p, bottomCircleCenter, bottomCircleRadius);
+    
+    // SDF for the cutting square
+    float squareSDF = sdSquare(p, squareCenter, squareSize);
+    
+    // Cut the circles using the square SDF
+    topCircleSDF = max(topCircleSDF, -squareSDF);
+    bottomCircleSDF = max(bottomCircleSDF, -squareSDF);
+    
+    // Combine the SDFs for the top and bottom parts of the "3"
+    return min(topCircleSDF, bottomCircleSDF);
+}
+
+
+float sdThirteen(vec2 p) {
+    // Offset positions for "1" and "3"
+    vec2 onePos = p + vec2(-0.6, 0.0);
+    vec2 threePos = p + vec2(0.6, 0.0);
+    
+    // Compute the SDFs for "1" and "3"
+    float oneSDF = sdOne(onePos);
+    float threeSDF = sdThree(threePos);
+    
+    // Combine the SDFs
+    return min(oneSDF, threeSDF);
+}
+
 void main() {
-#define GRID_WIDTH 5
-#define GRID_HEIGHT 5
+#define GRID_WIDTH 3
+#define GRID_HEIGHT 3
 #define NUM_CAPSULES (GRID_WIDTH * GRID_HEIGHT)
 
 // Calculate the center of the screen
@@ -619,7 +687,7 @@ for (int y = 0; y < GRID_HEIGHT; y++) {
                          0.5 + 0.5 * sin(time * 2.0 + float(i)));
 
         // Every 3rd capsule is black, without a conditional
-        colors[i] = mix(colors[i], vec3(0.0), float(i % 3 == 0));
+        colors[i] = mix(colors[i], vec3(0.0), float(i % 1 == 0));
         
         lengths[i] = 60.0 + 20.0 * sin(time * 0.5 + float(i));
         radii[i] = 20.0 + 10.0 * cos(time * 0.7 + float(i));
@@ -645,13 +713,36 @@ for (int i = 0; i < NUM_CAPSULES; i++) {
     b += positions[i];
 
     // Calculate the SDF of the capsule
-    float sd = sdCapsule(p, a, b, radii[i]);
+    float sd = sdThirteen(p);
 
     // Update the minimum distance and color if this capsule is closer
     if (sd < minDist) {
         minDist = sd;
         finalColor = colors[i];
     }
+}
+
+// Add a circle at the mouse position
+float mouseRadius = 30.0;
+vec2 mousePos = iMouse.xy - center;
+
+// Calculate the SDF of the circle at the mouse position
+float sdCircle = sdCircle(p, mousePos, mouseRadius);
+
+// Determine the circle color based on the mouse state
+vec3 circleColor;
+if (iMouse.z > 0.0) {
+    circleColor = vec3(0.0, 1.0, 0.0); // Red color if mouse is down
+} else if (iMouse.w > 0.0) {
+    circleColor = vec3(0.0, 1.0, 0.0); // Green color if mouse is clicked
+} else {
+    circleColor = vec3(0.0, 0.0, 0.0); // Default blue color
+}
+
+// Check if the circle is closer than the closest capsule
+if (sdCircle < minDist) {
+    minDist = sdCircle;
+    finalColor = circleColor;
 }
 
 // Output the final color
@@ -757,9 +848,6 @@ vec3 integrateSkyRadiance(vec2 angle) {
         integrateSkyRadiance_(vec2(angle[0], 2.0 * PI)) +
         integrateSkyRadiance_(vec2(0.0, angle[1] - 2.0 * PI));
 }
-
-#define RAYS_FORK_POW 2
-
 
 vec4 CastMergedInterval(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
 {
@@ -877,15 +965,16 @@ vec4 CastMergedIntervalBilinearFix(vec2 screen_pos, vec2 dir, vec2 interval_leng
         ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
 
         vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-        if(prev_cascade_index < nCascades)
+        if(prev_cascade_index < nCascades) {
             prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
-
+        }
         vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_location.probe_index), prev_probe_location.cascade_index, c0_size);
 
         vec2 ray_start = screen_pos * vec2(viewport_size) + dir * interval_length.x;
         vec2 ray_end = prev_screen_pos * vec2(viewport_size) + dir * interval_length.y;                
 
         RayHit ray_hit = radiance(iChannel1, ray_start, normalize(ray_end - ray_start), length(ray_end - ray_start));
+
         merged_interval += MergeIntervals(ray_hit.radiance, prev_interval) * weights[i];
     }
     return merged_interval;
@@ -1122,6 +1211,13 @@ void mainCubemap(out vec4 fragColor, vec2 fragCoord, vec3 fragRO, vec3 fragRD) {
         #elif MERGE_FIX == 5
             vec4 merged_inteval = CastMergedIntervalInnerParallaxFix(probe_location.probe_index, ray_dir, interval_length, prev_cascade_index, prev_dir_index);
         #endif
+
+        // Integrate the sky radiance for the last cascade
+        if (probe_location.cascade_index == nCascades - 1) {
+            vec2 angle = vec2(prev_dir_index, prev_dir_index + 1) / float(prev_cascade_size.dirs_count) * 2.0 * PI;
+            merged_inteval.rgb += float(avg_dirs_count) * integrateSkyRadiance(angle) / (angle.y - angle.x);
+        }
+
         merged_avg_interval += merged_inteval / float(avg_dirs_count);  
     }
     fragColor = merged_avg_interval;
@@ -1218,9 +1314,6 @@ let bufferATextureIndex = 0;
 let bufferBTextureIndex = 0;
 let cubeATextureIndex = 0;
 
-
-
-
 // Setup WebGL and create shaders for each buffer
 // const commonShader = createShader(gl, gl.FRAGMENT_SHADER, commonShaderSrc);
 const bufferAShader = createShader(gl, gl.FRAGMENT_SHADER, bufferAShaderSrc);
@@ -1234,242 +1327,299 @@ const bufferBProgram = createProgram(gl, vertexShaderSrc, bufferBShaderSrc);
 const cubeAProgram = createProgram(gl, vertexShaderSrc, cubeAShaderSrc);
 const imageProgram = createProgram(gl, vertexShaderSrc, imageShaderSrc);
 
-const setRenderTarget = (fbo) => {
+const setRenderTarget = (fbo: any) => {
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo.fbId);
-}
+};
 
-const setRenderTargetCubeMap = function (fbo, face)
-  {
-    if( fbo===null )
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    else
-    {
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo.fbId);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X+face, fbo.colorTexture, 0);
-        // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X+face, fbo.mTex0.mObjectID, 0);
-        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-          console.error("Framebuffer not complete");
-      }
+const setRenderTargetCubeMap = function (fbo: any, face: number) {
+  if (fbo === null) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  else {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo.fbId);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_CUBE_MAP_POSITIVE_X + face,
+      fbo.colorTexture,
+      0,
+    );
+    // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X+face, fbo.mTex0.mObjectID, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      console.error("Framebuffer not complete");
     }
-  };
-const renderCubemap = (face) => {
+  }
+};
+const renderCubemap = (face: number) => {
   gl.viewport(0, 0, CUBEMAP_RES, CUBEMAP_RES);
 
   let corA = [-1.0, -1.0, -1.0];
-  let corB = [ 1.0, -1.0, -1.0];
-  let corC = [ 1.0,  1.0, -1.0];
-  let corD = [-1.0,  1.0, -1.0];
-  let apex = [ 0.0,  0.0,  0.0];
+  let corB = [1.0, -1.0, -1.0];
+  let corC = [1.0, 1.0, -1.0];
+  let corD = [-1.0, 1.0, -1.0];
+  const apex = [0.0, 0.0, 0.0];
 
-       if( face===0 ) { corA=[ 1.0,  1.0,  1.0]; corB=[ 1.0,  1.0, -1.0]; corC=[ 1.0, -1.0, -1.0]; corD=[ 1.0, -1.0,  1.0]; }
-  else if( face===1 ) { corA=[-1.0,  1.0, -1.0]; corB=[-1.0,  1.0,  1.0]; corC=[-1.0, -1.0,  1.0]; corD=[-1.0, -1.0, -1.0]; }
-  else if( face===2 ) { corA=[-1.0,  1.0, -1.0]; corB=[ 1.0,  1.0, -1.0]; corC=[ 1.0,  1.0,  1.0]; corD=[-1.0,  1.0,  1.0]; }
-  else if( face===3 ) { corA=[-1.0, -1.0,  1.0]; corB=[ 1.0, -1.0,  1.0]; corC=[ 1.0, -1.0, -1.0]; corD=[-1.0, -1.0, -1.0]; }
-  else if( face===4 ) { corA=[-1.0,  1.0,  1.0]; corB=[ 1.0,  1.0,  1.0]; corC=[ 1.0, -1.0,  1.0]; corD=[-1.0, -1.0,  1.0]; }
-  else if( face===5 ) { corA=[ 1.0,  1.0, -1.0]; corB=[-1.0,  1.0, -1.0]; corC=[-1.0, -1.0, -1.0]; corD=[ 1.0, -1.0, -1.0]; }
+  if (face === 0) {
+    corA = [1.0, 1.0, 1.0];
+    corB = [1.0, 1.0, -1.0];
+    corC = [1.0, -1.0, -1.0];
+    corD = [1.0, -1.0, 1.0];
+  } else if (face === 1) {
+    corA = [-1.0, 1.0, -1.0];
+    corB = [-1.0, 1.0, 1.0];
+    corC = [-1.0, -1.0, 1.0];
+    corD = [-1.0, -1.0, -1.0];
+  } else if (face === 2) {
+    corA = [-1.0, 1.0, -1.0];
+    corB = [1.0, 1.0, -1.0];
+    corC = [1.0, 1.0, 1.0];
+    corD = [-1.0, 1.0, 1.0];
+  } else if (face === 3) {
+    corA = [-1.0, -1.0, 1.0];
+    corB = [1.0, -1.0, 1.0];
+    corC = [1.0, -1.0, -1.0];
+    corD = [-1.0, -1.0, -1.0];
+  } else if (face === 4) {
+    corA = [-1.0, 1.0, 1.0];
+    corB = [1.0, 1.0, 1.0];
+    corC = [1.0, -1.0, 1.0];
+    corD = [-1.0, -1.0, 1.0];
+  } else if (face === 5) {
+    corA = [1.0, 1.0, -1.0];
+    corB = [-1.0, 1.0, -1.0];
+    corC = [-1.0, -1.0, -1.0];
+    corD = [1.0, -1.0, -1.0];
+  }
 
-  let corners = [ corA[0], corA[1], corA[2], 
-                  corB[0], corB[1], corB[2], 
-                  corC[0], corC[1], corC[2], 
-                  corD[0], corD[1], corD[2],
+  const corners = [
+    corA[0],
+    corA[1],
+    corA[2],
+    corB[0],
+    corB[1],
+    corB[2],
+    corC[0],
+    corC[1],
+    corC[2],
+    corD[0],
+    corD[1],
+    corD[2],
 
-                  apex[0], apex[1], apex[2]];
+    apex[0],
+    apex[1],
+    apex[2],
+  ];
 
-  // this.mRenderer.SetShaderConstant3FV("unCorners", corners);
-  // this.mRenderer.SetShaderConstant4FV("unViewport", vp);
+  if (!cubeAProgram) return;
   // In pure WebGL, you would set the uniforms like this:
-  const cornersLocation = gl.getUniformLocation(cubeAProgram, 'unCorners');
+  const cornersLocation = gl.getUniformLocation(cubeAProgram, "unCorners");
   gl.uniform3fv(cornersLocation, corners);
   // And the same for the viewport
-  const viewportLocation = gl.getUniformLocation(cubeAProgram, 'unViewport');
+  const viewportLocation = gl.getUniformLocation(cubeAProgram, "unViewport");
   gl.uniform4fv(viewportLocation, [0, 0, CUBEMAP_RES, CUBEMAP_RES]);
 
   // Draw the quad
   drawQuad(gl);
-}
+};
 
 // Create the render loop
 function render() {
-    // Toggle between the two textures
-    bufferATextureIndex = 1 - bufferATextureIndex;
-    bufferBTextureIndex = 1 - bufferBTextureIndex;
-    cubeATextureIndex = 1 - cubeATextureIndex;
+  if (!gl) return;
+  if (!bufferAProgram || !bufferBProgram || !cubeAProgram || !imageProgram) return;
 
-    // Render to Buffer A
-    setRenderTarget(bufferA.targets[bufferATextureIndex]); // Ensure framebuffer is bound
-    // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, bufferA.textures[bufferATextureIndex], 0);  // Attach the texture
-    
-    // Use the other texture as input
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, bufferA.textures[1 - bufferATextureIndex]);
-    
-    useShader(gl, bufferAProgram);
-    drawQuad(gl);
+  // Toggle between the two textures
+  bufferATextureIndex = 1 - bufferATextureIndex;
+  bufferBTextureIndex = 1 - bufferBTextureIndex;
+  cubeATextureIndex = 1 - cubeATextureIndex;
 
-    // Render to Buffer B
-    setRenderTarget(bufferB.targets[bufferBTextureIndex]);  // Ensure framebuffer is bound
-    // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, bufferB.textures[bufferBTextureIndex], 0);  // Attach the texture
-    
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, bufferB.textures[1 - bufferBTextureIndex]);
+  // Render to Buffer A
+  setRenderTarget(bufferA.targets[bufferATextureIndex]); // Ensure framebuffer is bound
+  // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, bufferA.textures[bufferATextureIndex], 0);  // Attach the texture
 
+  // Use the other texture as input
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, bufferA.textures[1 - bufferATextureIndex]);
 
-    useShader(gl, bufferBProgram);
-    drawQuad(gl);
+  useShader(gl, bufferAProgram);
+  drawQuad(gl);
 
-    // Render to Cubemap
-    useShader(gl, cubeAProgram);
+  // Render to Buffer B
+  setRenderTarget(bufferB.targets[bufferBTextureIndex]); // Ensure framebuffer is bound
+  // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, bufferB.textures[bufferBTextureIndex], 0);  // Attach the texture
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapBuffer.textures[1 - cubeATextureIndex]);
-    const samplerLocationCube = gl.getUniformLocation(cubeAProgram, 'iChannel0');
-    gl.uniform1i(samplerLocationCube, 0);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, bufferB.textures[1 - bufferBTextureIndex]);
 
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, bufferB.textures[1 - bufferBTextureIndex]);
-    const samplerLocation = gl.getUniformLocation(cubeAProgram, 'iChannel1');
-    gl.uniform1i(samplerLocation, 1);
+  useShader(gl, bufferBProgram);
+  const mouseLocation = gl.getUniformLocation(bufferBProgram, "iMouse");
+  gl.uniform4f(mouseLocation, mouseX, mouseY, mouseDown, mouseClicked);
 
-    for( let face=0; face<6; face++ )
-      {
-          setRenderTargetCubeMap(cubemapBuffer.targets[cubeATextureIndex], face);  // Ensure framebuffer is bound
-          renderCubemap(face);
-          // this.Paint_Cubemap( vrData, wa, da, time, dtime, fps, mouseOriX, mouseOriY, mousePosX, mousePosY, xres, yres, buffers, cubeBuffers, keyboard, face );
-      }
-      setRenderTargetCubeMap( null, 0 ); 
+  drawQuad(gl);
 
+  // Render to Cubemap
+  useShader(gl, cubeAProgram);
 
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapBuffer.textures[1 - cubeATextureIndex]);
+  const samplerLocationCube = gl.getUniformLocation(cubeAProgram, "iChannel0");
+  gl.uniform1i(samplerLocationCube, 0);
 
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, bufferB.textures[1 - bufferBTextureIndex]);
+  const samplerLocation = gl.getUniformLocation(cubeAProgram, "iChannel1");
+  gl.uniform1i(samplerLocation, 1);
 
-    // Render final Image to the screen
-    bindFramebuffer(gl, null);  // Render to the screen (null unbinds the framebuffer)
-    useShader(gl, imageProgram);
+  for (let face = 0; face < 6; face++) {
+    setRenderTargetCubeMap(cubemapBuffer.targets[cubeATextureIndex], face); // Ensure framebuffer is bound
+    renderCubemap(face);
+    // this.Paint_Cubemap( vrData, wa, da, time, dtime, fps, mouseOriX, mouseOriY, mousePosX, mousePosY, xres, yres, buffers, cubeBuffers, keyboard, face );
+  }
+  setRenderTargetCubeMap(null, 0);
 
-    // Bind the output textures from the buffers as input for the final image
-    // gl.activeTexture(gl.TEXTURE1);
-    // gl.bindTexture(gl.TEXTURE_2D, bufferB.textures[bufferATextureIndex]);
+  // Render final Image to the screen
+  bindFramebuffer(gl, null); // Render to the screen (null unbinds the framebuffer)
+  useShader(gl, imageProgram);
 
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, bufferB.textures[bufferBTextureIndex]);
+  // Bind the output textures from the buffers as input for the final image
+  // gl.activeTexture(gl.TEXTURE1);
+  // gl.bindTexture(gl.TEXTURE_2D, bufferB.textures[bufferATextureIndex]);
 
-    const samplerLocation1 = gl.getUniformLocation(imageProgram, 'iChannel1');
-    gl.uniform1i(samplerLocation1, 1);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, bufferB.textures[bufferBTextureIndex]);
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapBuffer.textures[cubeATextureIndex]);
+  const samplerLocation1 = gl.getUniformLocation(imageProgram, "iChannel1");
+  gl.uniform1i(samplerLocation1, 1);
 
-    const samplerLocationCube1 = gl.getUniformLocation(imageProgram, 'iChannel0');
-    gl.uniform1i(samplerLocationCube1, 0);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapBuffer.textures[cubeATextureIndex]);
 
-    drawQuad(gl);
+  const samplerLocationCube1 = gl.getUniformLocation(imageProgram, "iChannel0");
+  gl.uniform1i(samplerLocationCube1, 0);
 
-    requestAnimationFrame(render);
+  drawQuad(gl);
 
+  mouseClicked = 0;
+  requestAnimationFrame(render);
 }
 
 render();
 
-
-
 // Utility functions to create shaders, framebuffers, etc.
-function createShader(gl, type, source) {
-    const shader = gl.createShader(type);
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        console.error(gl.getShaderInfoLog(shader));
-        console.error(source);
-        gl.deleteShader(shader);
-        return null;
-    }
-    return shader;
+function createShader(gl: WebGL2RenderingContext, type: number, source: string) {
+  const shader = gl.createShader(type);
+  if (!shader) {
+    console.error("Failed to create shader.");
+    return null;
+  }
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(shader));
+    console.error(source);
+    gl.deleteShader(shader);
+    return null;
+  }
+  return shader;
 }
 
-function createProgram(gl, vertexShaderSource, fragmentShaderSource) {
+function createProgram(
+  gl: WebGL2RenderingContext,
+  vertexShaderSource: string,
+  fragmentShaderSource: string,
+) {
   const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
   const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
 
   if (!vertexShader || !fragmentShader) {
-      console.error("Failed to compile shaders.");
-      return null;
+    console.error("Failed to compile shaders.");
+    return null;
   }
 
   const program = gl.createProgram();
+  if (!program) {
+    console.error("Failed to create program.");
+    return null;
+  }
   gl.attachShader(program, vertexShader);
   gl.attachShader(program, fragmentShader);
   gl.linkProgram(program);
 
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error("Program linking failed: " + gl.getProgramInfoLog(program));
-      gl.deleteProgram(program);
-      return null;
+    console.error("Program linking failed: " + gl.getProgramInfoLog(program));
+    gl.deleteProgram(program);
+    return null;
   }
 
   return program;
 }
 
-function createRenderTarget(colorTexture) {
-    const fbId = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbId);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTexture, 0);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    return {
-        fbId,
-        colorTexture: colorTexture,
-    };
+function createRenderTarget(colorTexture: any) {
+  if (!gl) return null;
+  const fbId = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbId);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTexture, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return {
+    fbId,
+    colorTexture: colorTexture,
+  };
 }
 
-function createRenderTargetCubemap(colorTexture) {
-    const fbId = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbId);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X, colorTexture, 0);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+function createRenderTargetCubemap(colorTexture: any) {
+  if (!gl) {
+    return null;
+  }
+  const fbId = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbId);
+  gl.framebufferTexture2D(
+    gl.FRAMEBUFFER,
+    gl.COLOR_ATTACHMENT0,
+    gl.TEXTURE_CUBE_MAP_POSITIVE_X,
+    colorTexture,
+    0,
+  );
+  gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE) {
-      console.log("Framebuffer is not complete! CreateRenderTarget");
-      return null;
-    } else {
-      console.log("Framebuffer is complete! CreateRenderTarget");
-    }
-
-    return {
-        fbId,
-        colorTexture: colorTexture,
-    };
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE) {
+    console.log("Framebuffer is not complete! CreateRenderTarget");
+    return null;
+  } else {
+    console.log("Framebuffer is complete! CreateRenderTarget");
   }
 
-function bindFramebuffer(gl, framebuffer) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer ? framebuffer.framebuffer : null);
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+  return {
+    fbId,
+    colorTexture: colorTexture,
+  };
 }
 
-function useShader(gl, shader) {
-    gl.useProgram(shader);
-    // Set shader uniforms here, like time, resolution, etc.
-    // Set resolution uniform
-    const resolutionLocation = gl.getUniformLocation(shader, 'resolution');
-    gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
-    gl.uniform1f(gl.getUniformLocation(shader, 'iTime'), performance.now() / 1000);
+function bindFramebuffer(gl: WebGL2RenderingContext, framebuffer: any) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer ? framebuffer.framebuffer : null);
+  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 }
 
-function drawQuad(gl) {
-    const vertices = new Float32Array([
-        -1.0, -1.0,
-         1.0, -1.0,
-        -1.0,  1.0,
-         1.0,  1.0,
-    ]);
-
-    const vertexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-
-    const position = gl.getAttribLocation(bufferAProgram, 'position');
-    gl.enableVertexAttribArray(position);
-    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+function useShader(gl: WebGL2RenderingContext, shader: WebGLShader) {
+  gl.useProgram(shader);
+  // Set shader uniforms here, like time, resolution, etc.
+  // Set resolution uniform
+  const resolutionLocation = gl.getUniformLocation(shader, "resolution");
+  gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
+  gl.uniform1f(gl.getUniformLocation(shader, "iTime"), performance.now() / 1000);
 }
 
+function drawQuad(gl: WebGL2RenderingContext) {
+  const vertices = new Float32Array([-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0]);
 
+  const vertexBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+  if (!bufferAProgram) {
+    console.error("No bufferAProgram");
+    return;
+  }
+  const position = gl.getAttribLocation(bufferAProgram, "position");
+  gl.enableVertexAttribArray(position);
+  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
