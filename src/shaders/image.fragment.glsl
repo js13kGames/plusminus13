@@ -8,6 +8,27 @@ out vec4 fragColor;
 
 @include "./common.fragment.glsl"
 
+   // Input color is non-negative and resides in the Linear Rec. 709 color space.
+// Output color is also Linear Rec. 709, but in the [0, 1] range.
+
+// vec3 PBRNeutralToneMapping( vec3 color ) {
+//   const float startCompression = 0.8 - 0.04;
+//   const float desaturation = 0.15;
+
+//   float x = min(color.r, min(color.g, color.b));
+//   float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+//   color -= offset;
+
+//   float peak = max(color.r, max(color.g, color.b));
+//   if (peak < startCompression) return color;
+
+//   const float d = 1. - startCompression;
+//   float newPeak = 1. - d * d / (peak + d - startCompression);
+//   color *= newPeak / peak;
+
+//   float g = 1. - 1. / (desaturation * (peak - newPeak) + 1.);
+//   return mix(color, newPeak * vec3(1, 1, 1), g);
+// }
 void main() {
    
     ivec2 viewport_size = ivec2(resolution.xy);
@@ -57,13 +78,18 @@ void main() {
     // vec4 data = sampleDrawing(iChannel1, fragCoord);
     // fluence = mix(fluence, data * 2.0 * PI, clamp(3.0 - data.r, 0.0, 1.0));
     // Tonemap
-    //fragColor = vec4(pow(fluence / (fluence + 1.0), vec3(1.0/2.5)), 1.0);
+    // fragColor = vec4(pow(fluence / (fluence + 1.0), vec3(1.0/2.5)), 1.0);
 
     // pass through iChannel1
-    vec4 color = texture(iChannel1, screen_pos).gbar;
-    if(color.a < -5.0) {
-        color.r = 1.0;
-    }
+    // vec4 color = texture(iChannel1, screen_pos).gbar;
+    // if(color.a < -5.0) {
+    //     color.r = 1.0;
+    // }
+    // fragColor = color;
+
+    vec4 color = vec4(1.0 - 1.0 / pow(1.0 + fluence.rgb, vec3(2.5)), 1.0);
     fragColor = color;
-    fragColor = vec4(1.0 - 1.0 / pow(1.0 + fluence.rgb, vec3(2.5)), 1.0);
+    // fragColor.rgb = PBRNeutralToneMapping(color.rgb);
+    // fragColor.a = 1.0;
 }
+

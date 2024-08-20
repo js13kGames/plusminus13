@@ -4,7 +4,6 @@ uniform samplerCube iChannel0;
 uniform sampler2D iChannel1; 
 uniform vec2 resolution;  
 
-
 @include "./common.fragment.glsl"
 
 // This buffer calculates and merges radiance cascades. Normally the
@@ -409,7 +408,8 @@ void mainCubemap(out vec4 fragColor, vec2 fragCoord, vec3 fragRO, vec3 fragRD) {
             vec4 merged_inteval = CastMergedIntervalInnerParallaxFix(probe_location.probe_index, ray_dir, interval_length, prev_cascade_index, prev_dir_index);
         #endif
 
-        // Integrate the sky radiance for the last cascade
+        // Integrate the sky radiance for the last cascade, but turn on/off every 10s
+        // if (probe_location.cascade_index == nCascades - 1 && mod(iTime + PI/2.0, 2.0*PI) < PI) {
         if (probe_location.cascade_index == nCascades - 1) {
             vec2 angle = vec2(prev_dir_index, prev_dir_index + 1) / float(prev_cascade_size.dirs_count) * 2.0 * PI;
             merged_inteval.rgb += float(avg_dirs_count) * integrateSkyRadiance(angle) / (angle.y - angle.x);

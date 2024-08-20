@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draggable Stick Man</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const gravity = 0.2;
+        const friction = 0.98;
+
+        let stickMan = {
+            head: { x: canvas.width / 2, y: canvas.height / 2, radius: 20 },
+            body: { x: canvas.width / 2, y: canvas.height / 2 + 60, length: 80 },
+            arms: [
+                { x: canvas.width / 2 - 40, y: canvas.height / 2 + 30, length: 60 },
+                { x: canvas.width / 2 + 40, y: canvas.height / 2 + 30, length: 60 }
+            ],
+            legs: [
+                { x: canvas.width / 2 - 20, y: canvas.height / 2 + 140, length: 60 },
+                { x: canvas.width / 2 + 20, y: canvas.height / 2 + 140, length: 60 }
+            ],
+            dragging: false,
+            offsetX: 0,
+            offsetY: 0,
+            vx: 0,
+            vy: 0,
+        };
+
+        function drawStickMan() {
+            // Draw head
+            ctx.beginPath();
+            ctx.arc(stickMan.head.x, stickMan.head.y, stickMan.head.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'black';
+            ctx.fill();
+            ctx.closePath();
+
+            // Draw body
+            ctx.beginPath();
+            ctx.moveTo(stickMan.head.x, stickMan.head.y + stickMan.head.radius);
+            ctx.lineTo(stickMan.body.x, stickMan.body.y);
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            ctx.closePath();
+
+            // Draw arms
+            ctx.beginPath();
+            ctx.moveTo(stickMan.body.x, stickMan.head.y + stickMan.head.radius + 10);
+            ctx.lineTo(stickMan.arms[0].x, stickMan.arms[0].y);
+            ctx.moveTo(stickMan.body.x, stickMan.head.y + stickMan.head.radius + 10);
+            ctx.lineTo(stickMan.arms[1].x, stickMan.arms[1].y);
+            ctx.stroke();
+            ctx.closePath();
+
+            // Draw legs
+            ctx.beginPath();
+            ctx.moveTo(stickMan.body.x, stickMan.body.y);
+            ctx.lineTo(stickMan.legs[0].x, stickMan.legs[0].y);
+            ctx.moveTo(stickMan.body.x, stickMan.body.y);
+            ctx.lineTo(stickMan.legs[1].x, stickMan.legs[1].y);
+            ctx.stroke();
+            ctx.closePath();
+        }
+
+        function updateStickMan() {
+            if (!stickMan.dragging) {
+                stickMan.vy += gravity;
+                stickMan.vx *= friction;
+                stickMan.vy *= friction;
+
+                stickMan.head.x += stickMan.vx;
+                stickMan.head.y += stickMan.vy;
+
+                stickMan.body.x += stickMan.vx;
+                stickMan.body.y += stickMan.vy;
+
+                for (let i = 0; i < 2; i++) {
+                    stickMan.arms[i].x += stickMan.vx;
+                    stickMan.arms[i].y += stickMan.vy;
+
+                    stickMan.legs[i].x += stickMan.vx;
+                    stickMan.legs[i].y += stickMan.vy;
+                }
+
+                // Boundary Collision
+                if (stickMan.head.x + stickMan.head.radius > canvas.width || stickMan.head.x - stickMan.head.radius < 0) {
+                    stickMan.vx = -stickMan.vx;
+                }
+                if (stickMan.head.y + stickMan.head.radius > canvas.height || stickMan.head.y - stickMan.head.radius < 0) {
+                    stickMan.vy = -stickMan.vy;
+                }
+            }
+        }
+
+        function loop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            updateStickMan();
+            drawStickMan();
+            requestAnimationFrame(loop);
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const dist = Math.hypot(e.clientX - stickMan.head.x, e.clientY - stickMan.head.y);
+            if (dist < stickMan.head.radius) {
+                stickMan.dragging = true;
+                stickMan.offsetX = e.clientX - stickMan.head.x;
+                stickMan.offsetY = e.clientY - stickMan.head.y;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (stickMan.dragging) {
+                stickMan.head.x = e.clientX - stickMan.offsetX;
+                stickMan.head.y = e.clientY - stickMan.offsetY;
+                stickMan.body.x = stickMan.head.x;
+                stickMan.body.y = stickMan.head.y + 60;
+                stickMan.arms[0].x = stickMan.head.x - 40;
+                stickMan.arms[0].y = stickMan.head.y + 30;
+                stickMan.arms[1].x = stickMan.head.x + 40;
+                stickMan.arms[1].y = stickMan.head.y + 30;
+                stickMan.legs[0].x = stickMan.head.x - 20;
+                stickMan.legs[0].y = stickMan.head.y + 140;
+                stickMan.legs[1].x = stickMan.head.x + 20;
+                stickMan.legs[1].y = stickMan.head.y + 140;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            stickMan.dragging = false;
+            stickMan.vx = (Math.random() - 0.5) * 20;
+            stickMan.vy = (Math.random() - 0.5) * 20;
+        });
+
+        loop();
+    </script>
+</body>
+</html>

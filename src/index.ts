@@ -2,6 +2,7 @@ import bufferBShaderSrc from "./shaders/bufferB.fragment.glsl";
 import cubeAShaderSrc from "./shaders/cubeMap.fragment.glsl";
 import imageShaderSrc from "./shaders/image.fragment.glsl";
 import geometricsdffont from "./shaders/geometricsdffont.fragment.glsl";
+import slerpy from "./slerp";
 // import TinySDFRenderer from "./tinysdf";
 
 const canvas = <HTMLCanvasElement>document.getElementById("glcanvas");
@@ -18,7 +19,7 @@ gl.getExtension("OES_texture_float_linear");
 gl.getExtension("OES_texture_half_float_linear");
 gl.getExtension("EXT_color_buffer_float");
 // const mDebugShader = gl.getExtension("WEBGL_debug_shaders");
-// const mAsynchCompile = gl.getExtension("KHR_parallel_shader_compile");
+const mAsynchCompile = gl.getExtension("KHR_parallel_shader_compile");
 
 // Set the canvas size
 canvas.width = window.innerWidth; // Set canvas width to window width
@@ -77,16 +78,38 @@ function resizeCanvas() {
 
 window.addEventListener("resize", resizeCanvas);
 
-// Store mouse position
+// Store mouse position and movement
 let mouseX = 0;
 let mouseY = 0;
 let mouseDown = 0;
 let mouseClicked = 0;
+let moveX = 0;
+let moveY = 0;
+let moveMagnitude = 0;
+let moveAngle = 0;
 
 // Update the mouse position on mouse move
 canvas.addEventListener("mousemove", (event) => {
-  mouseX = event.clientX;
-  mouseY = canvas.height - event.clientY; // Flip Y axis for WebGL
+  const newMouseX = event.clientX;
+  const newMouseY = canvas.height - event.clientY; // Flip Y axis for WebGL
+
+  const newMoveX = (newMouseX - mouseX) / canvas.width;
+  const newMoveY = (newMouseY - mouseY) / canvas.height;
+
+  // Smooth out moveX and moveY
+  moveX = moveX * 0.5 + newMoveX * 0.5;
+  moveY = moveY * 0.5 + newMoveY * 0.5;
+
+  moveX = newMoveX;
+  moveY = newMoveY;
+  // Calculate the magnitude and angle of the movement
+  moveMagnitude = Math.hypot(newMoveX, newMoveY);
+  moveAngle = Math.atan2(newMoveX, newMoveY);
+
+  // moveX = 0.0;
+  // moveY = -1.0;
+  mouseX = newMouseX;
+  mouseY = newMouseY;
 });
 
 canvas.addEventListener("mousedown", (event) => {
@@ -108,13 +131,6 @@ function resizeBuffer(gl: WebGL2RenderingContext, fbObj: any) {
 
   const target1 = createRenderTarget(texture1);
   const target2 = createRenderTarget(texture2);
-
-  // // Destroy the old textures ???
-  // gl.deleteTexture(fbObj.textures[0]);
-  // gl.deleteTexture(fbObj.textures[1]);
-  // // Destroy the old render targets
-  // gl.deleteFramebuffer(fbObj.targets[0]);
-  // gl.deleteFramebuffer(fbObj.targets[1]);
 
   fbObj.textures = [texture1, texture2];
   fbObj.targets = [target1, target2];
@@ -313,15 +329,37 @@ const renderCubemap = (face: number) => {
 // Render geometric SDF to a float texture
 
 // Create the render loop
+let atlasRendered = 0; // Flag to track if the atlas has been rendered
+const sdfTexture = null; // Variable to store the SDF texture
+
+// function normalize(vec: number[]) {
+//   const length = Math.hypot(vec[0], vec[1]);
+//   return [vec[0] / length, vec[1] / length];
+// }
+// function lerpDirection(currentDir: number[], targetDir: number[], t: number) {
+//   const interpolated = [
+//     currentDir[0] * (1 - t) + targetDir[0] * t,
+//     currentDir[1] * (1 - t) + targetDir[1] * t,
+//   ];
+//   return normalize(interpolated);
+// }
+
+let timeOfRender = performance.now();
+
 function render() {
   if (!gl) return;
   if (!bufferBProgram || !cubeAProgram || !imageProgram || !geometricSDFProgram) return;
+
+  // Set the fps of the #fps element
+  const fps = 1000 / (performance.now() - timeOfRender);
+  timeOfRender = performance.now();
+  document.getElementById("fps")!.innerText = fps.toFixed(2);
 
   // Toggle between the two textures
   bufferATextureIndex = 1 - bufferATextureIndex;
   bufferBTextureIndex = 1 - bufferBTextureIndex;
   cubeATextureIndex = 1 - cubeATextureIndex;
-  geometricSdfTextureIndex = 1 - geometricSdfTextureIndex;
+  geometricSdfTextureIndex = 0; // 1 - geometricSdfTextureIndex;
 
   // Render to Buffer A
   //   setRenderTarget(bufferA.targets[bufferATextureIndex]); // Ensure framebuffer is bound
@@ -333,13 +371,25 @@ function render() {
 
   //   useShader(gl, bufferAProgram);
   //   drawQuad(gl);
-  setRenderTarget(geomtricSdfBuffer.targets[geometricSdfTextureIndex]); // Ensure framebuffer is bound
-  useShader(gl, geometricSDFProgram);
-  drawQuad(gl);
+  if (atlasRendered < 2) {
+    console.log(mAsynchCompile);
+    setRenderTarget(geomtricSdfBuffer.targets[geometricSdfTextureIndex]); // Ensure framebuffer is bound
+    // gl.framebufferTexture2D(
+    //   gl.FRAMEBUFFER,
+    //   gl.COLOR_ATTACHMENT0,
+    //   gl.TEXTURE_2D,
+    //   geomtricSdfBuffer.textures[geometricSdfTextureIndex],
+    //   0,
+    // );
+
+    useShader(gl, geometricSDFProgram);
+    drawQuad(gl);
+    // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    atlasRendered += 1;
+  }
 
   // Render to Buffer B
   setRenderTarget(bufferB.targets[bufferBTextureIndex]); // Ensure framebuffer is bound
-  // gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, bufferB.textures[bufferBTextureIndex], 0);  // Attach the texture
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, geomtricSdfBuffer.textures[geometricSdfTextureIndex]);
@@ -372,6 +422,9 @@ function render() {
 
   const mouseLocation = gl.getUniformLocation(bufferBProgram, "iMouse");
   gl.uniform4f(mouseLocation, mouseX, mouseY, mouseDown, mouseClicked);
+
+  const mouseMoveLocation = gl.getUniformLocation(bufferBProgram, "iMouseMove");
+  gl.uniform2f(mouseMoveLocation, moveAngle, moveMagnitude);
 
   drawQuad(gl);
 
@@ -416,6 +469,11 @@ function render() {
   gl.uniform1i(samplerLocationCube1, 0);
 
   drawQuad(gl);
+
+  // Mouse movement decays
+  const result = slerpy(moveAngle, 0, moveMagnitude, 0, 0.1);
+  moveAngle = result.angle;
+  moveMagnitude = result.magnitude;
 
   mouseClicked = 0;
   requestAnimationFrame(render);

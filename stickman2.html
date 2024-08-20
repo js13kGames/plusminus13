@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draggable Stick Man</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+        .stick-man {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+        }
+        .part {
+            background-color: black;
+            position: absolute;
+        }
+        .head {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+        }
+        .body, .arm, .leg {
+            width: 10px;
+            height: 80px;
+        }
+        .arm, .leg {
+            height: 60px;
+            transform-origin: top center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="stick-man" id="stickMan">
+    <div class="part head" id="head"></div>
+    <div class="part body" id="body" style="top: 40px; left: 15px;"></div>
+    <div class="part arm" id="leftArm" style="top: 40px; left: -0px; transform: rotate(45deg);"></div>
+    <div class="part arm" id="rightArm" style="top: 40px; left: 30px; transform: rotate(-45deg);"></div>
+    <div class="part leg" id="leftLeg" style="top: 120px; left: 5px; transform: rotate(15deg);"></div>
+    <div class="part leg" id="rightLeg" style="top: 120px; left: 25px; transform: rotate(-15deg);"></div>
+</div>
+
+<script>
+    const stickMan = document.getElementById('stickMan');
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    stickMan.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        offsetX = e.clientX - stickMan.offsetLeft;
+        offsetY = e.clientY - stickMan.offsetTop;
+        stickMan.style.cursor = 'grabbing';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+        // Move the stick man
+        stickMan.style.left = e.clientX - offsetX + 'px';
+        stickMan.style.top = e.clientY - offsetY + 'px';
+
+        // Calculate the vector components
+        const moveX = e.movementX;
+        const moveY = e.movementY;
+
+        // Calculate the angle in degrees for rotation opposed to the movement vector
+        const angle = Math.atan2(-moveY, -moveX) * (180 / Math.PI);
+
+        // Scale the rotation based on the movement vector's magnitude
+        const magnitude = Math.hypot(moveX, moveY) * 0.1; // Adjust the multiplier to control sensitivity
+
+        // Apply rotation to limbs
+        leftArm.style.transform = `rotate(${angle + magnitude}deg)`;
+        rightArm.style.transform = `rotate(${angle - magnitude}deg)`;
+        leftLeg.style.transform = `rotate(${angle + magnitude}deg)`;
+        rightLeg.style.transform = `rotate(${angle - magnitude}deg)`;
+
+        // You could also rotate the body slightly, if desired:
+        body.style.transform = `rotate(${angle}deg)`;
+    }
+    });
+
+    document.addEventListener('mouseup', () => {
+            isDragging = false;
+            stickMan.style.cursor = 'grab';
+
+            // Reset the arms and legs to their original positions
+            leftArm.style.transform = `rotate(0deg)`;
+            rightArm.style.transform = `rotate(0deg)`;
+            leftLeg.style.transform = `rotate(0deg)`;
+            rightLeg.style.transform = `rotate(0deg)`;
+        });
+
+    document.addEventListener('mouseup', () => {
+        isDragging = false;
+        stickMan.style.cursor = 'grab';
+    });
+</script>
+
+</body>
+</html>

@@ -2,7 +2,7 @@
 #define MERGE_FIX 1
 #define C_MINUS1_GATHERING 1
 // Number of cascades all together
-const int nCascades = 6;
+const int nCascades = 6; // 6
 
 // Brush radius used for drawing, measured as fraction of resolution.y
 const float brushRadius = 0.02;
@@ -13,8 +13,8 @@ const float MAGIC = 1e25;
 
 #define probe_center vec2(0.5f)
 
-#define BRANCHING_FACTOR 2
-#define SPATIAL_SCALE_FACTOR 1
+#define BRANCHING_FACTOR 2 // 2 
+#define SPATIAL_SCALE_FACTOR 1 // 1
 
 struct CascadeSize
 {

@@ -5,12 +5,14 @@ uniform sampler2D iChannel0;  // Input from Common
 uniform sampler2D iChannel1;  // Input from text atlas
 uniform vec2 resolution;
 uniform vec4 iMouse;
+uniform vec2 iMouseMove;
 out vec4 fragColor;
 uniform float iTime; 
 #define GRID_WIDTH 3
 #define GRID_HEIGHT 3
 #define NUM_CAPSULES (GRID_WIDTH * GRID_HEIGHT)
 
+const float PI = 3.14159265359;
 // ${commonShaderSrc} 
 
 float sdCircle(vec2 p, vec2 c, float r) {
@@ -50,46 +52,79 @@ float sdSquare(vec2 p, vec2 center, vec2 size) {
     return max(d.x, d.y);
 }
     
-float sdThree(vec2 p) {
-    // Parameters for the top circle
-    vec2 topCircleCenter = vec2(200.0, 300.0);  // Center of top circle in pixels
-    float topCircleRadius = 50.0;               // Radius of top circle in pixels
+// float sdThree(vec2 p) {
+//     // Parameters for the top circle
+//     vec2 topCircleCenter = vec2(200.0, 300.0);  // Center of top circle in pixels
+//     float topCircleRadius = 50.0;               // Radius of top circle in pixels
     
-    // Parameters for the bottom circle
-    vec2 bottomCircleCenter = vec2(200.0, 400.0);  // Center of bottom circle in pixels
-    float bottomCircleRadius = 50.0;               // Radius of bottom circle in pixels
+//     // Parameters for the bottom circle
+//     vec2 bottomCircleCenter = vec2(200.0, 400.0);  // Center of bottom circle in pixels
+//     float bottomCircleRadius = 50.0;               // Radius of bottom circle in pixels
     
-    // Square to cut off the left half
-    vec2 squareCenter = vec2(150.0, 350.0);   // Center of the cutting square
-    vec2 squareSize = vec2(50.0, 150.0);      // Size of the cutting square
+//     // Square to cut off the left half
+//     vec2 squareCenter = vec2(150.0, 350.0);   // Center of the cutting square
+//     vec2 squareSize = vec2(50.0, 150.0);      // Size of the cutting square
     
-    // SDFs for the circles
-    float topCircleSDF = sdCircle(p, topCircleCenter, topCircleRadius);
-    float bottomCircleSDF = sdCircle(p, bottomCircleCenter, bottomCircleRadius);
+//     // SDFs for the circles
+//     float topCircleSDF = sdCircle(p, topCircleCenter, topCircleRadius);
+//     float bottomCircleSDF = sdCircle(p, bottomCircleCenter, bottomCircleRadius);
     
-    // SDF for the cutting square
-    float squareSDF = sdSquare(p, squareCenter, squareSize);
+//     // SDF for the cutting square
+//     float squareSDF = sdSquare(p, squareCenter, squareSize);
     
-    // Cut the circles using the square SDF
-    topCircleSDF = max(topCircleSDF, -squareSDF);
-    bottomCircleSDF = max(bottomCircleSDF, -squareSDF);
+//     // Cut the circles using the square SDF
+//     topCircleSDF = max(topCircleSDF, -squareSDF);
+//     bottomCircleSDF = max(bottomCircleSDF, -squareSDF);
     
-    // Combine the SDFs for the top and bottom parts of the "3"
-    return min(topCircleSDF, bottomCircleSDF);
+//     // Combine the SDFs for the top and bottom parts of the "3"
+//     return min(topCircleSDF, bottomCircleSDF);
+// }
+
+
+// float sdThirteen(vec2 p) {
+//     // Offset positions for "1" and "3"
+//     vec2 onePos = p + vec2(-0.6, 0.0);
+//     vec2 threePos = p + vec2(0.6, 0.0);
+    
+//     // Compute the SDFs for "1" and "3"
+//     float oneSDF = sdOne(onePos);
+//     float threeSDF = sdThree(threePos);
+    
+//     // Combine the SDFs
+//     return min(oneSDF, threeSDF);
+// }
+
+float sdCapsuleFixed(vec2 p, vec2 pos, float len, float rot) {
+  vec2 ba = vec2(sin(rot), cos(rot)) * len; // default orientation is vertical
+  vec2 pa = p - pos + ba; // top center
+
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - 15.0;
 }
 
+// Main SDF function for the stickman
 
-float sdThirteen(vec2 p) {
-    // Offset positions for "1" and "3"
-    vec2 onePos = p + vec2(-0.6, 0.0);
-    vec2 threePos = p + vec2(0.6, 0.0);
-    
-    // Compute the SDFs for "1" and "3"
-    float oneSDF = sdOne(onePos);
-    float threeSDF = sdThree(threePos);
-    
-    // Combine the SDFs
-    return min(oneSDF, threeSDF);
+float sdStickman(vec2 p, vec2 pos, float headLen, float rot) {
+    // Head - top capsule, serves as the parent for other parts
+    float head = sdCapsuleFixed(p, pos, headLen, rot);
+
+    // Body - positioned just below the head
+    float bodyLen = headLen * 4.5; // example ratio
+    vec2 bodyPos = pos - vec2(0, headLen + 30.0); // adjust for half lengths of head and body
+    float body = sdCapsuleFixed(p, bodyPos, bodyLen, rot);
+
+    // Legs - we'll assume they split at the bottom of the body
+    float legLength = bodyLen * 0.75;
+    float leg1 = sdCapsuleFixed(p, bodyPos - vec2(0.1 * bodyLen, 90.0), legLength, rot + 0.5); // Slight angle
+    float leg2 = sdCapsuleFixed(p, bodyPos - vec2(-0.1 * bodyLen, 90.0), legLength, rot - 0.5); // Slight angle
+
+    // Arms - positioned towards the middle of the body
+    float armLength = bodyLen * 0.75;
+    float arm1 = sdCapsuleFixed(p, bodyPos + vec2(0.2 * bodyLen, 0.0 * bodyLen), armLength, rot - 0.4); // Slight angle
+    float arm2 = sdCapsuleFixed(p, bodyPos + vec2(-0.2 * bodyLen, 0.0 * bodyLen), armLength, rot + 0.4); // Slight angle
+
+    // Combine all distances using the min function
+    return min(min(min(head, body), min(leg1, leg2)), min(arm1, arm2));
 }
 
 void main() {
@@ -140,58 +175,66 @@ for (int y = 0; y < GRID_HEIGHT; y++) {
 float minDist = 1e10;
 vec3 finalColor = vec3(0.0);
 
-for (int i = 0; i < NUM_CAPSULES; i++) {
-    // Define the endpoints of the capsule in pixel space
-    vec2 a = vec2(-lengths[i], 0.0);
-    vec2 b = vec2(lengths[i], 0.0);
+// for (int i = 0; i < NUM_CAPSULES; i++) {
+//     // Define the endpoints of the capsule in pixel space
+//     vec2 a = vec2(-lengths[i], 0.0);
+//     vec2 b = vec2(lengths[i], 0.0);
 
-    // Rotate the capsule
-    mat2 rotation = mat2(cos(rotations[i]), -sin(rotations[i]),
-                         sin(rotations[i]), cos(rotations[i]));
-    a = rotation * a;
-    b = rotation * b;
+//     // Rotate the capsule
+//     mat2 rotation = mat2(cos(rotations[i]), -sin(rotations[i]),
+//                          sin(rotations[i]), cos(rotations[i]));
+//     a = rotation * a;
+//     b = rotation * b;
 
-    // Translate the capsule
-    a += positions[i];
-    b += positions[i];
+//     // Translate the capsule
+//     a += positions[i];
+//     b += positions[i];
 
-    // Calculate the SDF of the capsule
-    float sd = sdThirteen(p);
+//     // Calculate the SDF of the capsule
+//     float sd = sdThirteen(p);
 
-    // Update the minimum distance and color if this capsule is closer
-    if (sd < minDist) {
-        minDist = sd;
-        finalColor = colors[i];
-    }
-}
+//     // Update the minimum distance and color if this capsule is closer
+//     if (sd < minDist) {
+//         minDist = sd;
+//         finalColor = colors[i];
+//     }
+// }
 
 // Add a circle at the mouse position
 float mouseRadius = 30.0;
 vec2 mousePos = iMouse.xy - center;
 
-// Calculate the SDF of the circle at the mouse position
-float sd = sdCircle(p, mousePos, mouseRadius);
+// Mouse movement is given in iMouseMovement.x and y, we
+// want to calculate the opposite angle and rotate the capsule
+float magnitude = iMouseMove.y;
+float rotation = iMouseMove.x;  
+// But the magnitude of the mouse movement is also important,
+// as slow moving mouse should rotate the capsule less
 
+
+// Calculate the SDF of the circle at the mouse position
+// float sd = sdCapsuleFixed(p, mousePos, mouseRadius, rotation * magnitude * 15.0);
+float sd = sdStickman(p, mousePos, 20.0, rotation * magnitude * 15.0);
 // Determine the circle color based on the mouse state
 vec3 circleColor;
 if (iMouse.z > 0.0) {
-    circleColor = vec3(0.0, 1.0, 0.0); // Red color if mouse is down
+    circleColor = vec3(10.0, 10.0, 10.0); // Red color if mouse is down
 } else if (iMouse.w > 0.0) {
-    circleColor = vec3(0.0, 1.0, 0.0); // Green color if mouse is clicked
+    circleColor = vec3(10.0, 10.0, 10.0); // Green color if mouse is clicked
 } else {
-    circleColor = vec3(0.0, 0.0, 1.0); // Default blue color
+    circleColor = vec3(magnitude * 5.0, 0.0, 0.0); // Default blue color
 }
-circleColor = vec3(
-    0.5 + 0.5 * sin(time * 2.0),
-    0.5 + 4.5 * cos(time * 1.5),
-    0.5 + 0.5 * sin(time * 1.0)
-);
+// circleColor = vec3(
+//     0.5 + 0.5 * sin(time * 2.0),
+//     0.5 + 4.5 * cos(time * 1.5),
+//     0.5 + 0.5 * sin(time * 1.0)
+// );
 
 
 vec4 textColor = texture(iChannel1, uv);
 // float factor = 48.0 / min(resolution.x, resolution.y);
 // float scaledDist = (1.0 - textColor.a) * factor;
-minDist = min(minDist, textColor.r * 48.0);
+minDist = textColor.r * 90.0;
 
 // minDist = 
 // // Check if the circle is closer than the closest capsule
@@ -200,6 +243,9 @@ if (sd < minDist) {
     finalColor = circleColor;
 }
 
+// if (uv.x > 0.55 && uv.y > 0.4 && uv.x < 0.88 && uv.y < 0.6) {
+//     finalColor = vec3(0.5 + 0.5*sin(iTime), 0.0, 0.0);
+// }
 // Output the final color
 // fragColor = vec4(minDist, finalColor);
 

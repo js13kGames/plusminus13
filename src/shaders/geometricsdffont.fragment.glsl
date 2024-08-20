@@ -2,6 +2,7 @@
 precision highp float;
 
 uniform vec2 resolution;
+uniform float iTime;
 
 out vec4 fragColor;
 
@@ -9,10 +10,31 @@ const int MODE_SINGLE = 1;
 const int MODE_GRID = 2;
 const int MODE = 2;
 
+const float PI = 3.14159265359;
 vec2 squareFrame(vec2 screenSize, vec2 coord) {
   vec2 position = 2.0 * (coord.xy / screenSize.xy) - 1.0;
   float aspect = screenSize.x / screenSize.y;
   return position * max(vec2(1.0), vec2(aspect, 1.0 / aspect));
+}
+
+float sdCapsule(vec2 p, vec2 a, vec2 b, float r) {
+    vec2 pa = p - a;
+    vec2 ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h) - r;
+}
+
+vec2 rotate2D(vec2 p, float a) {
+  return p * mat2(cos(a), -sin(a), sin(a), cos(a));
+}
+
+// A capsule that takes length, position and rotation as input
+// while the radius is fixed
+float sdCapsuleFixed(vec2 p, vec2 pos, float len, float rot) {
+  vec2 pa = p - pos;
+  vec2 ba = vec2(cos(rot), sin(rot)) * len;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - 0.18125;
 }
 
 float aastep(float threshold, float value) {
@@ -20,9 +42,6 @@ float aastep(float threshold, float value) {
   return smoothstep(threshold-afwidth, threshold+afwidth, value);
 }
 
-vec2 rotate2D(vec2 p, float a) {
-  return p * mat2(cos(a), -sin(a), sin(a), cos(a));
-}
 
 void pR(inout vec2 p, float a) {
   p = cos(a) * p + sin(a) * vec2(p.y, -p.x);
@@ -298,97 +317,99 @@ float digit0(vec2 p) {
 }
 
 float digit1(vec2 p) {
-  p.x += 0.3;
-  float d = sdBox(p, vec2(0.08125, 0.9));
-  p.y -= 0.9 - 0.08125;
-  d = min(d, sdBox(p + vec2(0.2, 0.0), vec2(0.3, 0.08125)));
-  return d;
+  return sdCapsule(p, vec2(0.0, -0.9), vec2(0.0, 0.7), 0.18125);
 }
+
+// float digit1(vec2 p) {
+//   p.x += 0.3;
+//   float d = sdBox(p, vec2(0.08125, 0.9));
+//   p.y -= 0.86 - 0.08125;
+//   p.x += 0.06;
+//   pR45(p);
+//   d = min(d, sdBox(p + vec2(0.2, 0.0), vec2(0.3, 0.08125)));
+//   return d;
+// }
 
 float digit2(vec2 p) {
-  p.y = -p.y;
-  return letterS(p);
-}
+  float d = sdCapsuleFixed(p, vec2(-0.3, 0.7), 0.8, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(0.5, 0.2), 0.05, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.2), 0.8, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.6), 0.02, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 0.8, 0.0));
 
-float digit3(vec2 p) {
-  p.y = -abs(p.y);
-  return letterS(p);
-}
-
-float digit4(vec2 p) {
-
-  //p.x = abs(p.x);
-  p.y += 0.12;
-  float d = sdBox(p, vec2(0.5, 0.08125));
-  p.y -= 0.12;
-  p.x -= 0.6 - 0.08125;
-  d = min(d, sdBox(p, vec2(0.08125, 0.9)));
-  p.x += 0.52;
-  p.y -= 0.34;
-  pR45(p);
-
-  d = min(d, sdBox(p, vec2(0.7, 0.08125)));
-  
   return d;
-  
-  
-  //float d = letterH(p);
-  //p.y += -0.32;
-  //pR45(p);
-  //d = min(d, sdBox(p, vec2(0.7, 0.08125)));
-  //pR45(p);
-  //d = max(d, p.y + 0.2);
-  
-  //return d;
+}
+
+// Construct using sdCapsule, like in LED, digit2
+float digit3(vec2 p) {
+  float d = sdCapsuleFixed(p, vec2(-0.3, 0.7), 1.0, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(0.4, 0.0), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.2), 0.8, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 0.8, 0.0));
+  return d;
+}
+// Construct using sdCapsule, like in LED, digit2
+float digit4(vec2 p) {
+  float d = sdCapsuleFixed(p, vec2(-0.3, 0.1), 1.0, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, 0.0), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.4, 0.0), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 1.0, PI/2.0));
+  return d;
 }
 
 float digit5(vec2 p) {
-  return letterS(p);
+  float d = sdCapsuleFixed(p, vec2(-0.1, 0.8), 0.8, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, 0.0), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.2, -0.0), 0.8, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 0.8, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 1.0, PI/2.0));
+  return d;
 }
 
+
+// Also using sdCapsuleFixed
 float digit6(vec2 p) {
-  p.y -= 0.4;
-  float dRing = sdRing(p, 0.5, 0.5 + 0.08125 * 2.0);
-  dRing = max(dRing, -p.y);
-  p.y += 0.75;
-  pElongate(p.y, 0.05);
-  float d = sdRing(p, 0.65 - 0.08125 * 2.0, 0.65);
-  pR(p, 3.14/2.0);
-  p.y -= 0.57;
-  p.x -= 0.4;
-  float d1 = sdBox(p, vec2(0.4, 0.08125));
-  return min(dRing, min(d, d1));
-  
-  //pElongate(p.y, 0.);
-  //float d = sdRing
-  //p.y += 0.5 - 0.98125;
-  //p.x += 0.58;
-  //d = min(d, sdBox(p, vec2(0.08125, 0.5)));
-  //return d;
+  float d = sdCapsuleFixed(p, vec2(-0.3, 0.7), 1.0, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, 0.0), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.1, -0.0), 0.4, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 0.8, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 1.0, PI/2.0));
+  return d;
 }
 
 float digit7(vec2 p) {
-  p.y = -p.y;
-  p.y += 0.6;
-
-  pR(p, 1.1);
-
-  return letterV(p);
+  float d = sdCapsuleFixed(p, vec2(-0.3, 0.7), 1.0, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(0.0, -0.9), 2.0, PI/2.5));
+  return d;
 }
 
 float digit8(vec2 p) {
-  float d = letterS(p);
-  p.y = -p.y;
-  return min(d, letterS(p));
+  float d = sdCapsuleFixed(p, vec2(-0.3, 0.7), 1.0, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, 0.0), 1.0, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 1.0, 0.0));
+
+  d = min(d, sdCapsuleFixed(p, vec2(0.4, 0.0), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, 0.0), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 1.0, PI/2.0));
+  return d;
 }
 
 float digit9(vec2 p) {
-  pR(p, 3.14);
-  return digit6(p);
+  float d = sdCapsuleFixed(p, vec2(-0.3, 0.7), 1.0, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, 0.0), 1.0, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 1.0, 0.0));
+
+  d = min(d, sdCapsuleFixed(p, vec2(0.4, 0.0), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, 0.0), 1.0, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 1.0, 0.0));
+  return d;
 }
 
-vec2 gridOffset(int x, int y) {
-  vec2 uv = vec2(float(x) / 6.0, float(y) / 5.0);
+vec2 gridOffset(float x, float y) {
+  vec2 uv = vec2(x / 6.0, y / 5.0);
   uv = uv * 2.0 - 1.0;
   uv *= 10.0;
   uv.x = -uv.x;
@@ -403,47 +424,59 @@ void main() {
     
   if (MODE == MODE_GRID) {
     float d = 999999.0;
-    uv *= 12.0;
+    uv *= 5.0;
     // Letters A-Z
-    d = min(d, letterA(uv + gridOffset(0, 0)));
-    d = min(d, letterB(uv + gridOffset(1, 0)));
-    d = min(d, letterC(uv + gridOffset(2, 0)));
-    d = min(d, letterD(uv + gridOffset(3, 0)));
-    d = min(d, letterE(uv + gridOffset(4, 0)));
-    d = min(d, letterF(uv + gridOffset(5, 0)));
-    d = min(d, letterG(uv + gridOffset(0, 1)));
-    d = min(d, letterH(uv + gridOffset(1, 1)));
-    d = min(d, letterI(uv + gridOffset(2, 1)));
-    d = min(d, letterJ(uv + gridOffset(3, 1)));
-    d = min(d, letterK(uv + gridOffset(4, 1)));
-    d = min(d, letterL(uv + gridOffset(5, 1)));
-    d = min(d, letterM(uv + gridOffset(0, 2)));
-    d = min(d, letterN(uv + gridOffset(1, 2)));
-    d = min(d, letterO(uv + gridOffset(2, 2)));
-    d = min(d, letterP(uv + gridOffset(3, 2)));
-    d = min(d, letterQ(uv + gridOffset(4, 2)));
-    d = min(d, letterR(uv + gridOffset(5, 2)));
-    d = min(d, letterS(uv + gridOffset(0, 3)));
-    d = min(d, letterT(uv + gridOffset(1, 3)));
-    d = min(d, letterU(uv + gridOffset(2, 3)));
-    d = min(d, letterV(uv + gridOffset(3, 3)));
-    d = min(d, letterW(uv + gridOffset(4, 3)));
-    d = min(d, letterX(uv + gridOffset(5, 3)));
-    d = min(d, letterY(uv + gridOffset(0, 4)));
-    d = min(d, letterZ(uv + gridOffset(1, 4)));
+    // d = min(d, letterA(uv + gridOffset(0, 0)));
+    // d = min(d, letterB(uv + gridOffset(1, 0)));
+    // d = min(d, letterC(uv + gridOffset(2, 0)));
+    // d = min(d, letterD(uv + gridOffset(3, 0)));
+    // d = min(d, letterE(uv + gridOffset(4, 0)));
+    // d = min(d, letterF(uv + gridOffset(5, 0)));
+    // d = min(d, letterG(uv + gridOffset(0, 1)));
+    // d = min(d, letterH(uv + gridOffset(1, 1)));
+    // d = min(d, letterI(uv + gridOffset(2, 1)));
+    // d = min(d, letterJ(uv + gridOffset(3, 1)));
+    // d = min(d, letterK(uv + gridOffset(4, 1)));
+    // d = min(d, letterL(uv + gridOffset(5, 1)));
+    // d = min(d, letterM(uv + gridOffset(0, 2)));
+    // d = min(d, letterN(uv + gridOffset(1, 2)));
+    // d = min(d, letterO(uv + gridOffset(2, 2)));
+    // d = min(d, letterP(uv + gridOffset(3, 2)));
+    // d = min(d, letterQ(uv + gridOffset(4, 2)));
+    // d = min(d, letterR(uv + gridOffset(5, 2)));
+    // d = min(d, letterS(uv + gridOffset(0, 3)));
+    // d = min(d, letterT(uv + gridOffset(1, 3)));
+    // d = min(d, letterU(uv + gridOffset(2, 3)));
+    // d = min(d, letterV(uv + gridOffset(3, 3)));
+    // d = min(d, letterW(uv + gridOffset(4, 3)));
+    // d = min(d, letterX(uv + gridOffset(5, 3)));
+    // d = min(d, letterY(uv + gridOffset(0, 4)));
+    // d = min(d, letterZ(uv + gridOffset(1, 4)));
     
-    // Numbers 0-9
-    d = min(d, digit0(uv + gridOffset(2, 4)));
-    d = min(d, digit1(uv + gridOffset(3, 4)));
-    d = min(d, digit2(uv + gridOffset(4, 4)));
-    d = min(d, digit3(uv + gridOffset(5, 4)));
-    d = min(d, digit4(uv + gridOffset(0, 5)));
-    d = min(d, digit5(uv + gridOffset(1, 5)));
-    d = min(d, digit6(uv + gridOffset(2, 5)));
-    d = min(d, digit7(uv + gridOffset(3, 5)));
-    d = min(d, digit8(uv + gridOffset(4, 5)));
-    d = min(d, digit9(uv + gridOffset(5, 5)));
-    
+    // // Numbers 0-9
+    // d = min(d, digit0(uv + gridOffset(2, 4)));
+    // d = min(d, digit1(uv + gridOffset(3, 4)));
+    // d = min(d, digit2(uv + gridOffset(4, 4)));
+    // d = min(d, digit3(uv + gridOffset(5, 4)));
+    // d = min(d, digit4(uv + gridOffset(0, 5)));
+    // d = min(d, digit5(uv + gridOffset(1, 5)));
+    // d = min(d, digit6(uv + gridOffset(2, 5)));
+    // d = min(d, digit7(uv + gridOffset(3, 5)));
+    // d = min(d, digit8(uv + gridOffset(4, 5)));
+    // d = min(d, digit9(uv + gridOffset(5, 5)));
+    // Spell JS13K, move the grid offset randomly based on time
+    // d = min(d, digit1(uv + 0.5*sin(2.0*vec2(iTime,-iTime)) + gridOffset(1.7, 2.5)));
+    // d = min(d, digit2(uv + 0.3*cos(3.0*vec2(iTime)) + gridOffset(2.4, 2.5)));
+    d = min(d, digit0(uv + gridOffset(1.2, 2.5)));
+    d = min(d, digit1(uv + gridOffset(1.7, 2.5)));
+    d = min(d, digit2(uv + gridOffset(2.2, 2.5)));
+    d = min(d, digit3(uv + gridOffset(2.7, 2.5)));
+    d = min(d, digit4(uv + gridOffset(3.2, 2.5)));
+    d = min(d, digit5(uv + gridOffset(3.7, 2.5)));
+    d = min(d, digit6(uv + gridOffset(4.2, 2.5)));
+    d = min(d, digit7(uv + gridOffset(4.7, 2.5)));
+    d = min(d, digit8(uv + gridOffset(5.2, 2.5)));
+    d = min(d, digit9(uv + gridOffset(5.7, 2.5)));
     //fragColor.rgb = vec3(1.0 - aastep(0.0, d) + border);
     fragColor.rgb = vec3(d);
 
