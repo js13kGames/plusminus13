@@ -94,34 +94,68 @@ float sdSquare(vec2 p, vec2 center, vec2 size) {
 //     return min(oneSDF, threeSDF);
 // }
 
-float sdCapsuleFixed(vec2 p, vec2 pos, float len, float rot) {
+float sdCapsuleFixed(vec2 p, vec2 pos, float len, float rot, float r) {
   vec2 ba = vec2(sin(rot), cos(rot)) * len; // default orientation is vertical
   vec2 pa = p - pos + ba; // top center
 
   float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-  return length(pa - ba * h) - 15.0;
+  return length(pa - ba * h) - r;
 }
 
 // Main SDF function for the stickman
 
 float sdStickman(vec2 p, vec2 pos, float headLen, float rot) {
     // Head - top capsule, serves as the parent for other parts
-    float head = sdCapsuleFixed(p, pos, headLen, rot);
+    float head = sdCapsuleFixed(p, pos, headLen, rot, 5.0);
 
     // Body - positioned just below the head
     float bodyLen = headLen * 4.5; // example ratio
     vec2 bodyPos = pos - vec2(0, headLen + 30.0); // adjust for half lengths of head and body
-    float body = sdCapsuleFixed(p, bodyPos, bodyLen, rot);
+    float body = sdCapsuleFixed(p, bodyPos, bodyLen, rot, 5.0);
 
     // Legs - we'll assume they split at the bottom of the body
     float legLength = bodyLen * 0.75;
-    float leg1 = sdCapsuleFixed(p, bodyPos - vec2(0.1 * bodyLen, 90.0), legLength, rot + 0.5); // Slight angle
-    float leg2 = sdCapsuleFixed(p, bodyPos - vec2(-0.1 * bodyLen, 90.0), legLength, rot - 0.5); // Slight angle
+    float leg1 = sdCapsuleFixed(p, bodyPos - vec2(0.1 * bodyLen, 90.0), legLength, rot + 0.5, 5.0); // Slight angle
+    float leg2 = sdCapsuleFixed(p, bodyPos - vec2(-0.1 * bodyLen, 90.0), legLength, rot - 0.5, 5.0); // Slight angle
 
     // Arms - positioned towards the middle of the body
     float armLength = bodyLen * 0.75;
-    float arm1 = sdCapsuleFixed(p, bodyPos + vec2(0.2 * bodyLen, 0.0 * bodyLen), armLength, rot - 0.4); // Slight angle
-    float arm2 = sdCapsuleFixed(p, bodyPos + vec2(-0.2 * bodyLen, 0.0 * bodyLen), armLength, rot + 0.4); // Slight angle
+    float arm1 = sdCapsuleFixed(p, bodyPos + vec2(0.2 * bodyLen, 0.0 * bodyLen), armLength, rot - 0.4, 5.0); // Slight angle
+    float arm2 = sdCapsuleFixed(p, bodyPos + vec2(-0.2 * bodyLen, 0.0 * bodyLen), armLength, rot + 0.4, 5.0); // Slight angle
+
+    // Combine all distances using the min function
+    return min(min(min(head, body), min(leg1, leg2)), min(arm1, arm2));
+}
+
+// Function to rotate a point around the origin
+vec2 rotate(vec2 p, float angle) {
+    float c = cos(angle);
+    float s = sin(angle);
+    return vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+}
+
+// Main SDF function for the stickman, applying hierarchical transformations
+float sdStickman2(vec2 p, vec2 pos, float headLen, float rot, float super, float magnitude) {
+    // Rotate and translate point p into head's local coordinate space
+    vec2 localP = rotate(p - pos, rot + super * 0.07 * cos(20.0*iTime));
+    float time = mod(iTime,2.0*PI);
+    // Head - no need to translate or rotate further as it is the root
+    float head = sdCapsuleFixed(localP, vec2(0,0), headLen, 0.0, 15.0);
+
+    // Body - positioned just below the head
+    float bodyLen = headLen * 2.3;
+    vec2 bodyPos = vec2(0, -headLen - 30.0); // local relative position
+    float body = sdCapsuleFixed(localP, bodyPos, bodyLen, 0.0, 10.0 + sin(30.0*max(magnitude, 0.1)*time)*0.3);
+
+    // Legs
+    float legLength = bodyLen * 0.75;
+    float leg1 = sdCapsuleFixed(localP, bodyPos - vec2(0.13 * bodyLen, 53.0), legLength, 0.5 - 0.3*super + cos(60.0*magnitude*time)*0.1 - min(magnitude*50.0, 0.4), 5.0);
+    float leg2 = sdCapsuleFixed(localP, bodyPos - vec2(-0.13 * bodyLen, 53.0), legLength, -0.5 + 0.3*super - sin(60.0*magnitude*time)*0.1 + min(magnitude*50.0, 0.4), 5.0);
+
+    // Arms
+    float armLength = bodyLen * 0.75;
+    float arm1 = sdCapsuleFixed(localP, bodyPos + vec2(0.2 * bodyLen, 0.0 * bodyLen), armLength, -0.5 - 2.1*super + cos(60.0*magnitude*time)*0.1 + min(magnitude*50.0, 0.2), 5.0);
+    float arm2 = sdCapsuleFixed(localP, bodyPos + vec2(-0.2 * bodyLen, 0.0 * bodyLen), armLength, 0.5 + 2.1*super + sin(60.0*magnitude*time)*0.1 - min(magnitude*50.0, 0.2), 5.0);
 
     // Combine all distances using the min function
     return min(min(min(head, body), min(leg1, leg2)), min(arm1, arm2));
@@ -208,21 +242,25 @@ vec2 mousePos = iMouse.xy - center;
 // want to calculate the opposite angle and rotate the capsule
 float magnitude = iMouseMove.y;
 float rotation = iMouseMove.x;  
-// But the magnitude of the mouse movement is also important,
-// as slow moving mouse should rotate the capsule less
 
+float clicked = iMouse.z;
+// If rotation is close to -PI, we want to null it and instead apply 'super' to the arms
+if (rotation < -3.0 || rotation > 3.0) {
+    rotation = 0.0;
+    clicked = 1.0;
+}
 
 // Calculate the SDF of the circle at the mouse position
 // float sd = sdCapsuleFixed(p, mousePos, mouseRadius, rotation * magnitude * 15.0);
-float sd = sdStickman(p, mousePos, 20.0, rotation * magnitude * 15.0);
+float sd = sdStickman2(p, mousePos, 20.0, rotation * magnitude * 15.0, clicked, magnitude);
 // Determine the circle color based on the mouse state
 vec3 circleColor;
 if (iMouse.z > 0.0) {
-    circleColor = vec3(10.0, 10.0, 10.0); // Red color if mouse is down
+    circleColor = vec3(1.0, 1.0, 1.0); // Red color if mouse is down
 } else if (iMouse.w > 0.0) {
-    circleColor = vec3(10.0, 10.0, 10.0); // Green color if mouse is clicked
+    circleColor = vec3(1.0, 1.0, 1.0); // Green color if mouse is clicked
 } else {
-    circleColor = vec3(magnitude * 5.0, 0.0, 0.0); // Default blue color
+    circleColor = vec3(magnitude * 15.0, 0.0, 0.0); // Default blue color
 }
 // circleColor = vec3(
 //     0.5 + 0.5 * sin(time * 2.0),

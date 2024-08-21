@@ -81,14 +81,14 @@ void main() {
     // fragColor = vec4(pow(fluence / (fluence + 1.0), vec3(1.0/2.5)), 1.0);
 
     // pass through iChannel1
-    // vec4 color = texture(iChannel1, screen_pos).gbar;
+    vec4 color = texture(iChannel1, screen_pos).bbar;
     // if(color.a < -5.0) {
     //     color.r = 1.0;
     // }
-    // fragColor = color;
+    fragColor = vec4(color.a, color.a, color.a, 1.0); 
 
-    vec4 color = vec4(1.0 - 1.0 / pow(1.0 + fluence.rgb, vec3(2.5)), 1.0);
-    fragColor = color;
+    // vec4 color = vec4(1.0 - 1.0 / pow(1.0 + fluence.rgb, vec3(2.5)), 1.0);
+    // fragColor = color;
     // fragColor.rgb = PBRNeutralToneMapping(color.rgb);
     // fragColor.a = 1.0;
 }

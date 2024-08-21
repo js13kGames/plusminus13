@@ -332,10 +332,10 @@ float digit1(vec2 p) {
 
 float digit2(vec2 p) {
   float d = sdCapsuleFixed(p, vec2(-0.3, 0.7), 0.8, 0.0);
-  d = min(d, sdCapsuleFixed(p, vec2(0.5, 0.2), 0.05, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.5, 0.22), 0.05, PI/2.0));
   d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.2), 0.8, 0.0));
-  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.6), 0.02, PI/2.0));
-  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 0.8, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.63), 0.02, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -1.04), 0.8, 0.0));
 
   return d;
 }
@@ -424,7 +424,7 @@ void main() {
     
   if (MODE == MODE_GRID) {
     float d = 999999.0;
-    uv *= 5.0;
+    uv *= 4.0;
     // Letters A-Z
     // d = min(d, letterA(uv + gridOffset(0, 0)));
     // d = min(d, letterB(uv + gridOffset(1, 0)));
@@ -467,16 +467,16 @@ void main() {
     // Spell JS13K, move the grid offset randomly based on time
     // d = min(d, digit1(uv + 0.5*sin(2.0*vec2(iTime,-iTime)) + gridOffset(1.7, 2.5)));
     // d = min(d, digit2(uv + 0.3*cos(3.0*vec2(iTime)) + gridOffset(2.4, 2.5)));
-    d = min(d, digit0(uv + gridOffset(1.2, 2.5)));
-    d = min(d, digit1(uv + gridOffset(1.7, 2.5)));
+    // d = min(d, digit0(uv + gridOffset(1.2, 2.5)));
+    // d = min(d, digit1(uv + gridOffset(1.7, 2.5)));
     d = min(d, digit2(uv + gridOffset(2.2, 2.5)));
-    d = min(d, digit3(uv + gridOffset(2.7, 2.5)));
-    d = min(d, digit4(uv + gridOffset(3.2, 2.5)));
-    d = min(d, digit5(uv + gridOffset(3.7, 2.5)));
-    d = min(d, digit6(uv + gridOffset(4.2, 2.5)));
-    d = min(d, digit7(uv + gridOffset(4.7, 2.5)));
-    d = min(d, digit8(uv + gridOffset(5.2, 2.5)));
-    d = min(d, digit9(uv + gridOffset(5.7, 2.5)));
+    // d = min(d, digit3(uv + gridOffset(2.7, 2.5)));
+    // d = min(d, digit4(uv + gridOffset(3.2, 2.5)));
+    // d = min(d, digit5(uv + gridOffset(3.7, 2.5)));
+    // d = min(d, digit6(uv + gridOffset(4.2, 2.5)));
+    // d = min(d, digit7(uv + gridOffset(4.7, 2.5)));
+    // d = min(d, digit8(uv + gridOffset(5.2, 2.5)));
+    // d = min(d, digit9(uv + gridOffset(5.7, 2.5)));
     //fragColor.rgb = vec3(1.0 - aastep(0.0, d) + border);
     fragColor.rgb = vec3(d);
 

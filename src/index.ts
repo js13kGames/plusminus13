@@ -100,11 +100,13 @@ canvas.addEventListener("mousemove", (event) => {
   moveX = moveX * 0.5 + newMoveX * 0.5;
   moveY = moveY * 0.5 + newMoveY * 0.5;
 
-  moveX = newMoveX;
-  moveY = newMoveY;
+  // moveX = newMoveX;
+  // moveY = newMoveY;
   // Calculate the magnitude and angle of the movement
-  moveMagnitude = Math.hypot(newMoveX, newMoveY);
-  moveAngle = Math.atan2(newMoveX, newMoveY);
+  // moveMagnitude = Math.hypot(newMoveX, newMoveY);
+  // moveAngle = Math.atan2(newMoveX, newMoveY);
+  moveMagnitude = Math.hypot(moveX, moveY);
+  moveAngle = Math.atan2(moveX, moveY);
 
   // moveX = 0.0;
   // moveY = -1.0;
