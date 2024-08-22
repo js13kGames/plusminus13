@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Game</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #333;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background-color: #eee;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0 | Lives: 3</div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let score = 0;
+        let lives = 3;
+
+        const boxes = [];
+        const numBoxes = 10;
+        const circle = { x: 0, y: 0, radius: 20 };
+
+        // Initialize boxes with random positions and values
+        for (let i = 0; i < numBoxes; i++) {
+            boxes.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: 40,
+                value: Math.floor(Math.random() * 13) + 1,
+                dx: (Math.random() - 0.5) * 4,
+                dy: (Math.random() - 0.5) * 4,
+            });
+        }
+
+        // Update positions and check for collisions
+        function update() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the circle
+            ctx.beginPath();
+            ctx.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#007BFF';
+            ctx.fill();
+            ctx.closePath();
+
+            // Draw and move the boxes
+            for (let box of boxes) {
+                box.x += box.dx;
+                box.y += box.dy;
+
+                // Bounce off the walls
+                if (box.x < 0 || box.x + box.size > canvas.width) box.dx *= -1;
+                if (box.y < 0 || box.y + box.size > canvas.height) box.dy *= -1;
+
+                // Draw the box
+                ctx.fillStyle = (box.value === 13) ? '#FF0000' : '#00FF00';
+                ctx.fillRect(box.x, box.y, box.size, box.size);
+
+                // Draw the value
+                ctx.fillStyle = '#000';
+                ctx.font = '20px Arial';
+                ctx.fillText(box.value, box.x + 10, box.y + 30);
+
+                // Check for collision with the circle
+                if (circle.x < box.x + box.size &&
+                    circle.x + circle.radius > box.x &&
+                    circle.y < box.y + box.size &&
+                    circle.y + circle.radius > box.y) {
+                    if (box.value === 13) {
+                        lives--;
+                    } else {
+                        score += box.value;
+                    }
+
+                    // Respawn the box in a new location
+                    box.x = Math.random() * canvas.width;
+                    box.y = Math.random() * canvas.height;
+                    box.value = Math.floor(Math.random() * 13) + 1;
+                }
+            }
+
+            // Update score and lives
+            document.getElementById('score').innerText = `Score: ${score} | Lives: ${lives}`;
+
+            // Check for game over
+            if (lives > 0) {
+                requestAnimationFrame(update);
+            } else {
+                alert('Game Over! Final Score: ' + score);
+                location.reload();
+            }
+        }
+
+        // Update the circle position based on mouse movement
+        canvas.addEventListener('mousemove', (e) => {
+            circle.x = e.clientX;
+            circle.y = e.clientY;
+        });
+
+        update();
+    </script>
+</body>
+</html>

@@ -1,14 +1,96 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WebGL Shader Example</title>
+    <title>WebGL Game</title>
     <style>
-        body, html { margin: 0; height: 100%; }
+        body, html { margin: 0; height: 100%;  }
         canvas { width: 100%; height: 100%; display: block; }
         #fps { position: absolute; top: 0; left: 0; color: white; }
+        body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.game-ui {
+    position: absolute; /* Makes the UI float above the canvas */
+    top: 0; /* Positions at the top */
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%; /* Takes full width to align items properly */
+    padding: 10px 20px; /* Adjust padding to ensure visibility */
+    box-sizing: border-box; /* Ensures padding doesn't add to the width */
+    font-family: monospace;
+    font-size: 3em;
+    color: white;
+}
+
+#lives, #timer, #score {
+    /* color: white; Ensures text is visible on possible dark backgrounds */
+    /* font-size: 1.5em; Makes text larger */
+}
+
+#scoresuper {
+    display: flex;
+    align-items: center;
+}
+
+#lives {
+    font-weight: bold; /* Makes the heart symbols bolder */
+    font-size: 3em;
+    color: red;
+    line-height: 0;
+}
+
+#timer {
+    font-weight: bold; /* Optional: emphasizes the timer */
+    /* font-size: 3em;; */
+}
+
+#score {
+    font-weight: normal; /* Adjust weight as needed */
+}
+
+.progress-circle {
+    width: 1em;
+    height: 1em;
+    border-radius: 50%;
+    margin-left: 1em;
+    background: conic-gradient(#fff 0%, #000 0%, #ddd 0%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    transition: background 0.3s;
+}
+
+.blinking {
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { background: #000; }
+    50% { background: #fff; }
+}
+
     </style>
 </head>
 <body>
+    <div class="game-ui">
+        <div id="lives">
+            ♥️♥️♥️
+        </div>
+        <div id="timer">13:00</div>
+        <div id="scoresuper">
+            <div id="score">0</div>
+            <div id="super"><div class="progress-circle" id="progress-circle">
+            </div></div>
+        </div>
+    </div>
     <div id="fps"></div>
     <canvas id="glcanvas"></canvas>
 </body>

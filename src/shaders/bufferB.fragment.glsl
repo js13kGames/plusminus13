@@ -8,9 +8,9 @@ uniform vec4 iMouse;
 uniform vec2 iMouseMove;
 out vec4 fragColor;
 uniform float iTime; 
-#define GRID_WIDTH 3
-#define GRID_HEIGHT 3
-#define NUM_CAPSULES (GRID_WIDTH * GRID_HEIGHT)
+uniform float u_super;
+uniform float u_superAvailable;
+uniform mat4 u_boxes[13];
 
 const float PI = 3.14159265359;
 // ${commonShaderSrc} 
@@ -161,6 +161,136 @@ float sdStickman2(vec2 p, vec2 pos, float headLen, float rot, float super, float
     return min(min(min(head, body), min(leg1, leg2)), min(arm1, arm2));
 }
 
+float sdBox(vec2 p, vec2 b )
+{
+    vec2 d = abs(p)-b;
+    return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+}
+
+vec2 gridOffset(vec2 uv, float index) {
+    vec2 gridSize = vec2(5.0, 5.0);  // 5x5 grid
+    vec2 cellSize = 1.0 / gridSize;   // Size of each cell
+    float col = mod(index, gridSize.x);
+    float row = floor(index / gridSize.x);
+    vec2 cellPos = vec2(col, row) * cellSize;  // Position of the cell
+    return (uv - cellPos) / cellSize - 0.5;  // Normalize UV to cell space
+}
+
+float digit0(vec2 p, float scale) {
+  // Circle
+  float d = length(p) - 0.9 * scale;
+  return d;
+}
+
+float digit1(vec2 p, float scale) {
+  return sdCapsuleFixed(p, vec2(0.0, 0.7) * scale, 1.4 * scale, 0.0, 0.2 * scale);
+}
+
+float digit2(vec2 p, float scale) {
+    // draw border with size of 1
+//   float scale = 100.0;
+  float d = sdCapsuleFixed(p, vec2(0.3, 0.5) * scale, 0.6 * scale, PI/2.0, 0.4 * scale);
+  // d = min(d, sdCapsuleFixed(p, vec2(0.1, 0.0), 0.03, PI/4.0));
+//   d = min(d, sdCapsuleFixed(p, vec2(-0.0, -0.3) * scale, 0.4 * scale, PI/2.0, 0.1 * scale));
+  // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.63), 0.02, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.3, -0.5) * scale, 0.6 * scale, PI/2.0, 0.4 * scale));
+
+  return d;
+}
+
+// Construct using sdCapsule, like in LED, digit2
+float digit3(vec2 p, float scale) {
+//   float scale = 100.0;
+  float d = sdCapsuleFixed(p, vec2(0.6, 0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale);
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.0) * scale, 0.4 * scale, PI/2.0, 0.2 * scale));
+  // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.2) * scale, 0.8, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
+  // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9) * scale, 0.8, 0.0));
+  return d;
+}
+
+float digit4(vec2 p, float scale) {
+  float d = sdCapsuleFixed(p, vec2(0.6, -0.05) * scale, 1.2 * scale, PI/2.0, 0.3 * scale);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.4, 0.6) * scale, 0.6 * scale, PI/8.0, 0.3 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.2, -0.2) * scale, 0.4 * scale, 0.0, 0.3 * scale));
+  // d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 0.8, PI/2.0));
+  return d;
+}
+
+float digit5(vec2 p, float scale) {
+  float d = sdCapsuleFixed(p, vec2(0.6, 0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.5, 0.5) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.1) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.0) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
+  // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9) * scale, 0.8, 0.0));
+  return d;
+}
+
+float digit6(vec2 p, float scale) {
+  float d = sdCapsuleFixed(p, vec2(0.6, 0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.5, 0.5) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.1) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.0) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.5, -0.1) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  return d;
+}
+
+float digit7(vec2 p, float scale) {
+  float d = sdCapsuleFixed(p, vec2(0.6, 0.6) * scale, 1.1 * scale, PI/2.0, 0.3 * scale);
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.5) * scale, 1.3 * scale, PI/6.0, 0.3 * scale));
+  return d;
+}
+
+float digit8(vec2 p, float scale) {
+  float d = sdCapsuleFixed(p, vec2(0.6, 0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.5, 0.5) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.1) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.0) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.5, -0.1) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.5) * scale, 1.1 * scale, 0.0, 0.2 * scale));
+  return d;
+}
+
+float digit9(vec2 p, float scale) {
+    // 6 upside down
+    p = vec2(-p.x, -p.y);
+    return digit6(p, scale);
+}
+
+// 10 is two capsules at an angle, to form a roman X
+float digit10(vec2 p, float scale) {
+    float d = sdCapsuleFixed(p, vec2(0.55, 0.55) * scale, 1.6 * scale, PI/4.0, 0.3 * scale);
+    d = min(d, sdCapsuleFixed(p, vec2(-0.55, 0.55) * scale, 1.6 * scale, -PI/4.0, 0.3 * scale));
+    return d;
+}
+
+float digit11(vec2 p, float scale) {
+    float d = sdCapsuleFixed(p, vec2(0.40, 0.65) * scale, 1.3 * scale, 0.0, 0.3 * scale);
+    d = min(d, sdCapsuleFixed(p, vec2(-0.40, 0.65) * scale, 1.3 * scale, 0.0, 0.3 * scale));
+    return d;
+}
+
+float digit12(vec2 p, float scale) {
+    float d = sdCapsuleFixed(p, vec2(0.70, 0.40) * scale, 0.6 * scale, PI/2.0, 0.3 * scale);
+    d = min(d, sdCapsuleFixed(p, vec2(-0.60, 0.65) * scale, 1.3 * scale, 0.0, 0.3 * scale));
+    d = min(d, sdCapsuleFixed(p, vec2(0.70, -0.4) * scale, 0.6 * scale, PI/2.0, 0.3 * scale));
+    return d;
+}
+
+float digit13(vec2 p, float scale) {
+    float d = sdCapsuleFixed(p, vec2(0.70, 0.70) * scale, 0.6 * scale, 1.3, 0.25 * scale);
+    d = min(d, sdCapsuleFixed(p, vec2(-0.60, 0.75) * scale, 1.5 * scale, 0.0, 0.2 * scale));
+    d = min(d, sdCapsuleFixed(p, vec2(0.70, 0.5) * scale, 0.6 * scale, 0.4, 0.2 * scale));
+    d = min(d, sdCapsuleFixed(p, vec2(0.45, -0.10) * scale, 0.6 * scale, -0.5, 0.2 * scale));
+    d = min(d, sdCapsuleFixed(p, vec2(0.7, -0.7) * scale, 0.6 * scale, PI/2.0 + 0.1, 0.20 * scale));
+    return d;
+}
+
+
+
 void main() {
 
 
@@ -168,46 +298,102 @@ void main() {
 vec2 center = resolution.xy * 0.5;
 
 // Position of the current fragment relative to the center
-vec2 p = gl_FragCoord.xy - center;
+vec2 p = gl_FragCoord.xy;
 
 vec2 uv = gl_FragCoord.xy / resolution.xy;
 
 // Time-dependent parameters
 float time = iTime;
 
-// Arrays to store individual capsule properties
-vec2 positions[NUM_CAPSULES];
-float rotations[NUM_CAPSULES];
-vec3 colors[NUM_CAPSULES];
-float lengths[NUM_CAPSULES];
-float radii[NUM_CAPSULES];
-
-// Initialize capsule properties
-float gridSpacingX = resolution.x * 0.8 / float(GRID_WIDTH);
-float gridSpacingY = resolution.y * 0.8 / float(GRID_HEIGHT);
-vec2 gridOffset = vec2(-gridSpacingX * float(GRID_WIDTH - 1) * 0.5,
-                       -gridSpacingY * float(GRID_HEIGHT - 1) * 0.5);
-
-for (int y = 0; y < GRID_HEIGHT; y++) {
-    for (int x = 0; x < GRID_WIDTH; x++) {
-        int i = y * GRID_WIDTH + x;
-        positions[i] = gridOffset + vec2(float(x) * gridSpacingX, float(y) * gridSpacingY);
-        rotations[i] = time * (0.0 + float(i) * 0.2);
-        colors[i] = vec3(0.0, 0.0, 0.0);
-        // colors[i] = vec3(0.5 + 0.5 * sin(time + 4.0*float(i)),
-        //                  0.5 + 0.5 * cos(time * 1.5 + float(i)),
-        //                  0.5 + 0.5 * sin(time * 2.0 + float(i)));
-
-        // Every 3rd capsule is black, without a conditional
-        colors[i] = mix(colors[i], vec3(0.0), float(i % 1 != 0));
-        
-        lengths[i] = 60.0 + 20.0 * sin(time * 0.5 + float(i));
-        radii[i] = 20.0 + 10.0 * cos(time * 0.7 + float(i));
-    }
-}
 
 float minDist = 1e10;
 vec3 finalColor = vec3(0.0);
+
+// vec2 tuv = uv;
+// vec2 aspect = vec2(resolution.x / resolution.y, 1.0);
+// tuv *= aspect;
+
+// If width is less than height, scale the x axis
+// if (aspect.x < aspect.y) {
+//     tuv.x *= aspect.y / aspect.x;
+// }  
+
+for (int i = 0; i < 13; i++) {
+    // first row of the u_boxes mat4 is [x,y, size, value]
+    // second row of the u_boxes mat4 is [dx,dy,enemy, _pad_]
+
+    // Use the u_boxes array to draw circles
+    vec2 center = u_boxes[i][0].xy;
+    float radius = u_boxes[i][0].z;
+    float value = u_boxes[i][0].w;
+    // color is in the 7, 8 and 9th index of the u_boxes mat4
+    vec3 color = u_boxes[i][2].xyz / 255.0;
+
+
+    // vec2 translatedUV = tuv;
+
+    float sd = 1e10;
+    // sd = max(sdBox(p - center, vec2(1.0)*radius), -sdBox(p - center, vec2(0.95)*radius));
+
+    if(value < 0.1) {
+        sd = min(sd, digit0(p - center, radius));
+    } else if(value < 1.1) {
+        sd = min(sd, digit1(p - center, radius));
+    } else if (value < 2.1) {
+        sd = min(sd, digit2(p - center, radius));
+    }  else if (value < 3.1) {
+        sd = min(sd, digit3(p - center, radius));
+    } else if (value < 4.1) {
+        sd = min(sd, digit4(p - center, radius));
+    } else if (value < 5.1) {
+        sd = min(sd, digit5(p - center, radius));
+    } else if (value < 6.1) {
+        sd = min(sd, digit6(p - center, radius));
+    } else if (value < 7.1) {
+        sd = min(sd, digit7(p - center, radius));
+    } else if (value < 8.1) {
+        sd = min(sd, digit8(p - center, radius));
+    } else if (value < 9.1) {
+        sd = min(sd, digit9(p - center, radius));
+    } else if (value < 10.1) {
+        sd = min(sd, digit10(p - center, radius));
+    } else if (value < 11.1) {
+        sd = min(sd, digit11(p - center, radius));
+    } else if (value < 12.1) {
+        sd = min(sd, digit12(p - center, radius));
+    } else if (value < 13.1) {
+        sd = min(sd, digit13(p - center, radius));
+    } else {
+        sd = min(sd, sdCircle(p, center, radius));
+    }
+
+
+
+    //sd = sdCircle(p, center, radius);
+
+    if (sd < minDist) {
+            minDist = sd;
+            finalColor = color;
+        }
+
+    // vec2 glyphUV = (tuv)/ vec2(5.0, 5.0) + gridOffsetIdx / vec2(5.0, 5.0);
+
+    //  // Ensure we are within the glyph's boundaries
+    //     if (glyphUV.x >= gridOffsetIdx.x / 5.0 && glyphUV.x < (gridOffsetIdx.x + 1.0) / 5.0 &&
+    //         glyphUV.y >= gridOffsetIdx.y / 5.0 && glyphUV.y < (gridOffsetIdx.y + 1.0) / 5.0) {
+            
+    //             float sd = texture(iChannel1, gridOffset(tuv, gridOffsetIdx.x, gridOffsetIdx.y)).r;
+     
+
+    
+    //         }
+    // Only fetch the texture if the current pixel is within the glyph
+
+    // Your code here
+
+
+
+}
 
 // for (int i = 0; i < NUM_CAPSULES; i++) {
 //     // Define the endpoints of the capsule in pixel space
@@ -236,7 +422,7 @@ vec3 finalColor = vec3(0.0);
 
 // Add a circle at the mouse position
 float mouseRadius = 30.0;
-vec2 mousePos = iMouse.xy - center;
+vec2 mousePos = iMouse.xy;
 
 // Mouse movement is given in iMouseMovement.x and y, we
 // want to calculate the opposite angle and rotate the capsule
@@ -252,13 +438,13 @@ if (rotation < -3.0 || rotation > 3.0) {
 
 // Calculate the SDF of the circle at the mouse position
 // float sd = sdCapsuleFixed(p, mousePos, mouseRadius, rotation * magnitude * 15.0);
-float sd = sdStickman2(p, mousePos, 20.0, rotation * magnitude * 15.0, clicked, magnitude);
+float sd = sdStickman2(p, mousePos, 20.0, rotation * magnitude * 15.0, clicked * u_superAvailable, magnitude);
 // Determine the circle color based on the mouse state
 vec3 circleColor;
-if (iMouse.z > 0.0) {
-    circleColor = vec3(1.0, 1.0, 1.0); // Red color if mouse is down
+if (iMouse.z > 0.0 && u_super > 0.0 && u_superAvailable > 0.0) {
+    circleColor = vec3(2.0);
 } else if (iMouse.w > 0.0) {
-    circleColor = vec3(1.0, 1.0, 1.0); // Green color if mouse is clicked
+    circleColor = vec3(0.0, 0.0, 0.0); // White color if mouse is clicked
 } else {
     circleColor = vec3(magnitude * 15.0, 0.0, 0.0); // Default blue color
 }
@@ -269,10 +455,10 @@ if (iMouse.z > 0.0) {
 // );
 
 
-vec4 textColor = texture(iChannel1, uv);
+
 // float factor = 48.0 / min(resolution.x, resolution.y);
 // float scaledDist = (1.0 - textColor.a) * factor;
-minDist = textColor.r * 90.0;
+// minDist = textColor.r;// * 90.0;
 
 // minDist = 
 // // Check if the circle is closer than the closest capsule
@@ -296,6 +482,7 @@ if (sd < minDist) {
 
 fragColor = vec4(minDist, finalColor);
 
+// fragColor = textColor;
   // // Calculate the center of the screen
   // vec2 center = resolution.xy * 0.5;
 

@@ -6,16 +6,7 @@ uniform float iTime;
 
 out vec4 fragColor;
 
-const int MODE_SINGLE = 1;
-const int MODE_GRID = 2;
-const int MODE = 2;
-
 const float PI = 3.14159265359;
-vec2 squareFrame(vec2 screenSize, vec2 coord) {
-  vec2 position = 2.0 * (coord.xy / screenSize.xy) - 1.0;
-  float aspect = screenSize.x / screenSize.y;
-  return position * max(vec2(1.0), vec2(aspect, 1.0 / aspect));
-}
 
 float sdCapsule(vec2 p, vec2 a, vec2 b, float r) {
     vec2 pa = p - a;
@@ -34,7 +25,7 @@ float sdCapsuleFixed(vec2 p, vec2 pos, float len, float rot) {
   vec2 pa = p - pos;
   vec2 ba = vec2(cos(rot), sin(rot)) * len;
   float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-  return length(pa - ba * h) - 0.18125;
+  return length(pa - ba * h) - 0.12125;
 }
 
 float aastep(float threshold, float value) {
@@ -312,12 +303,20 @@ float letterZ(vec2 p) {
 }
 
 
+// float digit0(vec2 p) {
+//   return letterO(p);
+// }
+
 float digit0(vec2 p) {
-  return letterO(p);
+  // Circle
+  float d = length(p) - 0.4;
+  return d;
 }
 
 float digit1(vec2 p) {
-  return sdCapsule(p, vec2(0.0, -0.9), vec2(0.0, 0.7), 0.18125);
+  // float scale = 200.0/1.0;
+
+  return sdCapsule(p, vec2(0.0, -0.3), vec2(0.0, 0.3), 0.12125);
 }
 
 // float digit1(vec2 p) {
@@ -331,30 +330,30 @@ float digit1(vec2 p) {
 // }
 
 float digit2(vec2 p) {
-  float d = sdCapsuleFixed(p, vec2(-0.3, 0.7), 0.8, 0.0);
-  d = min(d, sdCapsuleFixed(p, vec2(0.5, 0.22), 0.05, PI/2.0));
-  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.2), 0.8, 0.0));
-  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.63), 0.02, PI/2.0));
-  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -1.04), 0.8, 0.0));
+  float d = sdCapsuleFixed(p, vec2(-0.2, 0.3), 0.4, 0.0);
+  // d = min(d, sdCapsuleFixed(p, vec2(0.1, 0.0), 0.03, PI/4.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.2, -0.3), 0.4, 0.0));
+  // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.63), 0.02, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.2, -0.7), 0.4, 0.0));
 
   return d;
 }
 
 // Construct using sdCapsule, like in LED, digit2
 float digit3(vec2 p) {
-  float d = sdCapsuleFixed(p, vec2(-0.3, 0.7), 1.0, 0.0);
-  d = min(d, sdCapsuleFixed(p, vec2(0.4, 0.0), 1.0, PI/2.0));
-  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.2), 0.8, 0.0));
-  d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 1.0, PI/2.0));
-  d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 0.8, 0.0));
+  float d = sdCapsuleFixed(p, vec2(-0.2, 0.3), 0.5, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(0.1, 0.0), 0.2, 0.0));
+  // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.2), 0.8, 0.0));
+  d = min(d, sdCapsuleFixed(p, vec2(-0.2, -0.3), 0.5, 0.0));
+  // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9), 0.8, 0.0));
   return d;
 }
 // Construct using sdCapsule, like in LED, digit2
 float digit4(vec2 p) {
-  float d = sdCapsuleFixed(p, vec2(-0.3, 0.1), 1.0, 0.0);
-  d = min(d, sdCapsuleFixed(p, vec2(-0.3, 0.0), 1.0, PI/2.0));
-  d = min(d, sdCapsuleFixed(p, vec2(0.4, 0.0), 1.0, PI/2.0));
-  d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 1.0, PI/2.0));
+  float d = sdCapsuleFixed(p, vec2(-0.2, -0.05), 0.2, 0.0);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.2, -0.0), 0.3, PI/2.0));
+  d = min(d, sdCapsuleFixed(p, vec2(0.3, -0.3), 0.6, PI/2.0));
+  // d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 0.8, PI/2.0));
   return d;
 }
 
@@ -408,78 +407,118 @@ float digit9(vec2 p) {
   return d;
 }
 
-vec2 gridOffset(float x, float y) {
-  vec2 uv = vec2(x / 6.0, y / 5.0);
-  uv = uv * 2.0 - 1.0;
-  uv *= 10.0;
-  uv.x = -uv.x;
-  return uv;
+vec2 gridOffset(vec2 uv, float col, float row) {
+    vec2 gridSize = vec2(5.0, 5.0);  // 5x5 grid
+    vec2 cellSize = 1.0 / gridSize;   // Size of each cell
+    vec2 cellPos = vec2(float(col), float(row)) * cellSize;  // Position of the cell
+    return (uv - cellPos) / cellSize - 0.5;  // Normalize UV to cell space
 }
 
+
+
 void main() {
-  vec2 uv = squareFrame(resolution.xy, gl_FragCoord.xy);
-
+  // Get the normalized coordinates
+  vec2 uv = gl_FragCoord.xy / resolution.xy;
   
-  float border = 0.35 * step(0.9, max(abs(uv.x), abs(uv.y)));
+  vec2 aspect = vec2(resolution.x / resolution.y, 1.0);
+  uv *= aspect;
+  
+  // If width is less than height, scale the x axis
+  if (aspect.x < aspect.y) {
+    uv.x *= aspect.y / aspect.x;
+  }  
+  // vec2 aspect = vec2(resolution.x / resolution.y, 1.0);
+  // uv *= aspect;
     
-  if (MODE == MODE_GRID) {
-    float d = 999999.0;
-    uv *= 4.0;
-    // Letters A-Z
-    // d = min(d, letterA(uv + gridOffset(0, 0)));
-    // d = min(d, letterB(uv + gridOffset(1, 0)));
-    // d = min(d, letterC(uv + gridOffset(2, 0)));
-    // d = min(d, letterD(uv + gridOffset(3, 0)));
-    // d = min(d, letterE(uv + gridOffset(4, 0)));
-    // d = min(d, letterF(uv + gridOffset(5, 0)));
-    // d = min(d, letterG(uv + gridOffset(0, 1)));
-    // d = min(d, letterH(uv + gridOffset(1, 1)));
-    // d = min(d, letterI(uv + gridOffset(2, 1)));
-    // d = min(d, letterJ(uv + gridOffset(3, 1)));
-    // d = min(d, letterK(uv + gridOffset(4, 1)));
-    // d = min(d, letterL(uv + gridOffset(5, 1)));
-    // d = min(d, letterM(uv + gridOffset(0, 2)));
-    // d = min(d, letterN(uv + gridOffset(1, 2)));
-    // d = min(d, letterO(uv + gridOffset(2, 2)));
-    // d = min(d, letterP(uv + gridOffset(3, 2)));
-    // d = min(d, letterQ(uv + gridOffset(4, 2)));
-    // d = min(d, letterR(uv + gridOffset(5, 2)));
-    // d = min(d, letterS(uv + gridOffset(0, 3)));
-    // d = min(d, letterT(uv + gridOffset(1, 3)));
-    // d = min(d, letterU(uv + gridOffset(2, 3)));
-    // d = min(d, letterV(uv + gridOffset(3, 3)));
-    // d = min(d, letterW(uv + gridOffset(4, 3)));
-    // d = min(d, letterX(uv + gridOffset(5, 3)));
-    // d = min(d, letterY(uv + gridOffset(0, 4)));
-    // d = min(d, letterZ(uv + gridOffset(1, 4)));
-    
-    // // Numbers 0-9
-    // d = min(d, digit0(uv + gridOffset(2, 4)));
-    // d = min(d, digit1(uv + gridOffset(3, 4)));
-    // d = min(d, digit2(uv + gridOffset(4, 4)));
-    // d = min(d, digit3(uv + gridOffset(5, 4)));
-    // d = min(d, digit4(uv + gridOffset(0, 5)));
-    // d = min(d, digit5(uv + gridOffset(1, 5)));
-    // d = min(d, digit6(uv + gridOffset(2, 5)));
-    // d = min(d, digit7(uv + gridOffset(3, 5)));
-    // d = min(d, digit8(uv + gridOffset(4, 5)));
-    // d = min(d, digit9(uv + gridOffset(5, 5)));
-    // Spell JS13K, move the grid offset randomly based on time
-    // d = min(d, digit1(uv + 0.5*sin(2.0*vec2(iTime,-iTime)) + gridOffset(1.7, 2.5)));
-    // d = min(d, digit2(uv + 0.3*cos(3.0*vec2(iTime)) + gridOffset(2.4, 2.5)));
-    // d = min(d, digit0(uv + gridOffset(1.2, 2.5)));
-    // d = min(d, digit1(uv + gridOffset(1.7, 2.5)));
-    d = min(d, digit2(uv + gridOffset(2.2, 2.5)));
-    // d = min(d, digit3(uv + gridOffset(2.7, 2.5)));
-    // d = min(d, digit4(uv + gridOffset(3.2, 2.5)));
-    // d = min(d, digit5(uv + gridOffset(3.7, 2.5)));
-    // d = min(d, digit6(uv + gridOffset(4.2, 2.5)));
-    // d = min(d, digit7(uv + gridOffset(4.7, 2.5)));
-    // d = min(d, digit8(uv + gridOffset(5.2, 2.5)));
-    // d = min(d, digit9(uv + gridOffset(5.7, 2.5)));
-    //fragColor.rgb = vec3(1.0 - aastep(0.0, d) + border);
-    fragColor.rgb = vec3(d);
+  float d = 999999.0;
 
-  }
+  // Early return if pixels are part of grid border, grid cell is 1/5th of UV
+  // use the uv as it's scaled and aspect adjusted
+  // if (mod(uv.x * 5.0, 1.0) < 0.01 || mod(uv.y * 5.0, 1.0) < 0.01) {
+  //   fragColor.rgb = vec3(0.5);
+  //   fragColor.a = 1.0;
+  //   return;
+  // }
+
+  // Letters A-Z
+  // d = min(d, letterA(uv + gridOffset(0, 0)));
+  // d = min(d, letterB(uv + gridOffset(1, 0)));
+  // d = min(d, letterC(uv + gridOffset(2, 0)));
+  // d = min(d, letterD(uv + gridOffset(3, 0)));
+  // d = min(d, letterE(uv + gridOffset(4, 0)));
+  // d = min(d, letterF(uv + gridOffset(5, 0)));
+  // d = min(d, letterG(uv + gridOffset(0, 1)));
+  // d = min(d, letterH(uv + gridOffset(1, 1)));
+  // d = min(d, letterI(uv + gridOffset(2, 1)));
+  // d = min(d, letterJ(uv + gridOffset(3, 1)));
+  // d = min(d, letterK(uv + gridOffset(4, 1)));
+  // d = min(d, letterL(uv + gridOffset(5, 1)));
+  // d = min(d, letterM(uv + gridOffset(0, 2)));
+  // d = min(d, letterN(uv + gridOffset(1.0, 2.0)));
+  // d = min(d, letterO(uv + gridOffset(2, 2)));
+  // d = min(d, letterP(uv + gridOffset(3, 2)));
+  // d = min(d, letterQ(uv + gridOffset(4, 2)));
+  // d = min(d, letterR(uv + gridOffset(5, 2)));
+  // d = min(d, letterS(uv + gridOffset(0, 3)));
+  // d = min(d, letterT(uv + gridOffset(1, 3)));
+  // d = min(d, letterU(uv + gridOffset(2, 3)));
+  // d = min(d, letterV(uv + gridOffset(3, 3)));
+  // d = min(d, letterW(uv + gridOffset(4, 3)));
+  // d = min(d, letterX(uv + gridOffset(5, 3)));
+  // d = min(d, letterY(uv + gridOffset(0, 4)));
+  // d = min(d, letterZ(uv + gridOffset(1, 4)));
+  
+  // // Numbers 0-9
+  // d = min(d, digit0(uv + gridOffset(2, 4)));
+  // d = min(d, digit1(uv + gridOffset(3, 4)));
+  // d = min(d, digit2(uv + gridOffset(4, 4)));
+  // d = min(d, digit3(uv + gridOffset(5, 4)));
+  // d = min(d, digit4(uv + gridOffset(0, 5)));
+  // d = min(d, digit5(uv + gridOffset(1, 5)));
+  // d = min(d, digit6(uv + gridOffset(2, 5)));
+  // d = min(d, digit7(uv + gridOffset(3, 5)));
+  // d = min(d, digit8(uv + gridOffset(4, 5)));
+  // d = min(d, digit9(uv + gridOffset(5, 5)));
+  // Spell JS13K, move the grid offset randomly based on time
+  // d = min(d, digit1(uv + 0.5*sin(2.0*vec2(iTime,-iTime)) + gridOffset(1.7, 2.5)));
+  // d = min(d, digit2(uv + 0.3*cos(3.0*vec2(iTime)) + gridOffset(2.4, 2.5)));
+  // d = min(d, digit0(uv + gridOffset(0.0, 1.0)));
+  d = min(d, digit0(gridOffset(uv, 0.0, 0.0)));
+  d = min(d, digit1(gridOffset(uv, 1.0, 0.0)));
+  d = min(d, digit2(gridOffset(uv, 2.0, 0.0)));
+  d = min(d, digit3(gridOffset(uv, 3.0, 0.0)));
+  d = min(d, digit4(gridOffset(uv, 4.0, 0.0)));
+
+  d = min(d, digit4(gridOffset(uv, 0.0, 1.0)));
+  d = min(d, digit4(gridOffset(uv, 1.0, 1.0)));
+  d = min(d, digit4(gridOffset(uv, 2.0, 1.0)));
+  d = min(d, digit4(gridOffset(uv, 3.0, 1.0)));
+  d = min(d, digit4(gridOffset(uv, 4.0, 1.0)));
+
+  d = min(d, digit4(gridOffset(uv, 0.0, 2.0)));
+  d = min(d, digit4(gridOffset(uv, 1.0, 2.0)));
+  d = min(d, digit4(gridOffset(uv, 2.0, 2.0)));
+  d = min(d, digit4(gridOffset(uv, 3.0, 2.0)));
+  d = min(d, digit4(gridOffset(uv, 4.0, 2.0)));
+
+
+  // d = min(d, digit4(uv + gridOffset(4.0, 1.0)));
+  // d = min(d, digit5(uv + gridOffset(0.0, 2.0)));
+  // d = min(d, digit6(uv + gridOffset(1.0, 2.0)));
+  // d = min(d, digit7(uv + gridOffset(2.0, 2.0)));
+  // d = min(d, digit8(uv + gridOffset(3.0, 2.0)));
+  // d = min(d, digit9(uv + gridOffset(4.0, 2.0)));
+  // add a thin 5x5 grid to the screen using sdf
+
+
+
+
+  fragColor.rgb = vec3(1.0 - aastep(0.0, d));
+  
+  // fragColor.rgb = vec3(d, d ,d);
+  
+  // fragColor.rgb = vec3(d);
+
+
   fragColor.a = 1.0;
 }

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circular Progress Bar</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #f0f0f0;
+}
+
+
+
+.progress-circle-inner {
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    background-color: #fff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.progress-text {
+    font-size: 24px;
+    font-weight: bold;
+    color: #4caf50;
+}
+
+.progress-circle {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: conic-gradient(#4caf50 0%, #4caf50 0%, #ddd 0%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    transition: background 0.3s;
+}
+
+.blinking {
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { background: #4caf50; }
+    50% { background: #ff0000; }
+}
+
+</style>
+</head>
+<body>
+    <div class="progress-circle" id="progress-circle">
+        <div class="progress-circle-inner">
+            <div class="progress-text" id="progress-text">0%</div>
+        </div>
+    </div>
+    <script>
+        function setProgress(value) {
+    const circle = document.getElementById('progress-circle');
+    const text = document.getElementById('progress-text');
+    const progressValue = Math.min(Math.max(value, 0), 100); // Clamp value between 0 and 100
+
+    // Update the circular progress bar
+    const angle = (progressValue / 100) * 360;
+    circle.style.background = `conic-gradient(#4caf50 ${angle}deg, #ddd ${angle}deg)`;
+
+    // Update the progress text
+    text.textContent = `${progressValue}%`;
+
+    // Add blinking effect if full
+    if (progressValue >= 100) {
+        circle.classList.add('blinking');
+    } else {
+        circle.classList.remove('blinking');
+    }
+}
+
+// Example usage: Set progress to a specific value
+setProgress(75);
+
+// You can dynamically update the progress by calling setProgress(value)
+// For example, to update the progress to 100%:
+setTimeout(() => setProgress(100), 2000);
+    </script>
+
+
+</body>
+</html>

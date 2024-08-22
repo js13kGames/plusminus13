@@ -1,5 +1,5 @@
 @nomangle MERGE_FIX C_MINUS1_GATHERING BRANCHING_FACTOR SPATIAL_SCALE_FACTOR probe_center uintBitsToFloat texture
-#define MERGE_FIX 1
+#define MERGE_FIX 4
 #define C_MINUS1_GATHERING 1
 // Number of cascades all together
 const int nCascades = 6; // 6

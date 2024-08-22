@@ -106,37 +106,37 @@ vec4 InterpProbeDir(ivec2 probe_index, int cascade_index, float dir_indexf)
     return interp_interval;
 }
 
-// vec4 CastMergedIntervalParallaxFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
-// {
-//     ivec2 face_size = textureSize(iChannel0, 0);    
-//     ivec2 viewport_size = textureSize(iChannel1, 0);
-//     CascadeSize c0_size = GetC0Size(viewport_size);
-//     CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
+vec4 CastMergedIntervalParallaxFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
+{
+    ivec2 face_size = textureSize(iChannel0, 0);    
+    ivec2 viewport_size = textureSize(iChannel1, 0);
+    CascadeSize c0_size = GetC0Size(viewport_size);
+    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
     
-//     vec2 ray_start = screen_pos * vec2(viewport_size) + dir * interval_length.x;
-//     vec2 ray_end = screen_pos * vec2(viewport_size) + dir * interval_length.y;                
+    vec2 ray_start = screen_pos * vec2(viewport_size) + dir * interval_length.x;
+    vec2 ray_end = screen_pos * vec2(viewport_size) + dir * interval_length.y;                
 
-//     RayHit ray_hit = radiance(iChannel1, ray_start, normalize(ray_end - ray_start), length(ray_end - ray_start));
+    RayHit ray_hit = radiance(iChannel1, ray_start, normalize(ray_end - ray_start), length(ray_end - ray_start));
 
-//     BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, prev_cascade_index, c0_size);
-//     vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-//     vec4 prev_interp_interval = vec4(0.0f);
-//     for(int i = 0; i < 4; i++)
-//     {
-//         ivec2 prev_probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-//         vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_index), prev_cascade_index, c0_size);
-//         float prev_dir_indexf = GetDirIndexf(ray_end - prev_screen_pos * vec2(viewport_size), prev_cascade_size.dirs_count);
-//         vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-//         if(prev_cascade_index < nCascades)
-//             prev_interval = InterpProbeDir(
-//                 prev_probe_index,
-//                 prev_cascade_index,
-//                 prev_dir_indexf);
+    BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, prev_cascade_index, c0_size);
+    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
+    vec4 prev_interp_interval = vec4(0.0f);
+    for(int i = 0; i < 4; i++)
+    {
+        ivec2 prev_probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
+        vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_index), prev_cascade_index, c0_size);
+        float prev_dir_indexf = GetDirIndexf(ray_end - prev_screen_pos * vec2(viewport_size), prev_cascade_size.dirs_count);
+        vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        if(prev_cascade_index < nCascades)
+            prev_interval = InterpProbeDir(
+                prev_probe_index,
+                prev_cascade_index,
+                prev_dir_indexf);
 
-//         prev_interp_interval += prev_interval * weights[i];
-//     }
-//     return MergeIntervals(ray_hit.radiance, prev_interp_interval);
-// }
+        prev_interp_interval += prev_interval * weights[i];
+    }
+    return MergeIntervals(ray_hit.radiance, prev_interp_interval);
+}
 
 
 vec4 CastMergedIntervalBilinearFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
@@ -177,53 +177,53 @@ vec4 CastMergedIntervalBilinearFix(vec2 screen_pos, vec2 dir, vec2 interval_leng
 }
 
 
-// vec4 CastMergedIntervalMidpointBilinearFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
-// {
+vec4 CastMergedIntervalMidpointBilinearFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
+{
 
-//     ivec2 face_size = textureSize(iChannel0, 0);    
-//     ivec2 viewport_size = textureSize(iChannel1, 0);
-//     CascadeSize c0_size = GetC0Size(viewport_size);
-//     CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
-//     vec2 probe_screen_size = GetProbeScreenSize(prev_cascade_index, c0_size);
+    ivec2 face_size = textureSize(iChannel0, 0);    
+    ivec2 viewport_size = textureSize(iChannel1, 0);
+    CascadeSize c0_size = GetC0Size(viewport_size);
+    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
+    vec2 probe_screen_size = GetProbeScreenSize(prev_cascade_index, c0_size);
 
-//     float midpoint_length = max(interval_length.x, interval_length.y - probe_screen_size.x * float(viewport_size.x) * 1.5f);
+    float midpoint_length = max(interval_length.x, interval_length.y - probe_screen_size.x * float(viewport_size.x) * 1.5f);
     
-//     vec2 ray_start_1 = screen_pos * vec2(viewport_size) + dir * interval_length.x;
-//     vec2 ray_end_1 = screen_pos * vec2(viewport_size) + dir * midpoint_length;                
+    vec2 ray_start_1 = screen_pos * vec2(viewport_size) + dir * interval_length.x;
+    vec2 ray_end_1 = screen_pos * vec2(viewport_size) + dir * midpoint_length;                
 
-//     RayHit ray_hit_1 = radiance(iChannel1, ray_start_1, normalize(ray_end_1 - ray_start_1), length(ray_end_1 - ray_start_1));
+    RayHit ray_hit_1 = radiance(iChannel1, ray_start_1, normalize(ray_end_1 - ray_start_1), length(ray_end_1 - ray_start_1));
 
     
-//     BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, prev_cascade_index, c0_size);
-//     vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-//     vec4 merged_interval = vec4(0.0f);
-//     for(int i = 0; i < 4; i++)
-//     {
-//         ProbeLocation prev_probe_location;
-//         prev_probe_location.cascade_index = prev_cascade_index;
-//         prev_probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-//         prev_probe_location.dir_index = prev_dir_index;
+    BilinearSamples bilinear_samples = GetProbeBilinearSamples(screen_pos, prev_cascade_index, c0_size);
+    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
+    vec4 merged_interval = vec4(0.0f);
+    for(int i = 0; i < 4; i++)
+    {
+        ProbeLocation prev_probe_location;
+        prev_probe_location.cascade_index = prev_cascade_index;
+        prev_probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
+        prev_probe_location.dir_index = prev_dir_index;
 
 
-//         int pixel_index = ProbeLocationToPixelIndex(prev_probe_location, c0_size);
-//         ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
+        int pixel_index = ProbeLocationToPixelIndex(prev_probe_location, c0_size);
+        ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
 
-//         vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-//         if(prev_cascade_index < nCascades)
-//             prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
+        vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        if(prev_cascade_index < nCascades)
+            prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
 
-//         vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_location.probe_index), prev_probe_location.cascade_index, c0_size);
+        vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_location.probe_index), prev_probe_location.cascade_index, c0_size);
 
-//         vec2 ray_start_2 = ray_end_1;
-//         vec2 ray_end_2 = prev_screen_pos * vec2(viewport_size) + dir * interval_length.y;                
+        vec2 ray_start_2 = ray_end_1;
+        vec2 ray_end_2 = prev_screen_pos * vec2(viewport_size) + dir * interval_length.y;                
 
-//         RayHit ray_hit_2 = radiance(iChannel1, ray_start_2, normalize(ray_end_2 - ray_start_2), length(ray_end_2 - ray_start_2));
+        RayHit ray_hit_2 = radiance(iChannel1, ray_start_2, normalize(ray_end_2 - ray_start_2), length(ray_end_2 - ray_start_2));
         
-//         vec4 combined_interval = MergeIntervals(ray_hit_1.radiance, ray_hit_2.radiance);
-//         merged_interval += MergeIntervals(combined_interval, prev_interval) * weights[i];
-//     }
-//     return merged_interval;
-// }
+        vec4 combined_interval = MergeIntervals(ray_hit_1.radiance, ray_hit_2.radiance);
+        merged_interval += MergeIntervals(combined_interval, prev_interval) * weights[i];
+    }
+    return merged_interval;
+}
 
 // vec4 CastMergedIntervalMaskFix(vec2 screen_pos, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
 // {
@@ -280,72 +280,72 @@ vec4 CastMergedIntervalBilinearFix(vec2 screen_pos, vec2 dir, vec2 interval_leng
 //     return MergeIntervals(ray_interval, prev_interp_interval);
 // }
 
-// vec4 CastInterpProbeDir(ivec2 probe_index, int cascade_index, vec2 interval_length, float dir_indexf)
-// {
-//     ivec2 face_size = textureSize(iChannel0, 0);    
-//     ivec2 viewport_size = textureSize(iChannel1, 0);
-//     CascadeSize c0_size = GetC0Size(viewport_size);
-//     CascadeSize cascade_size = GetCascadeSize(cascade_index, c0_size);
+vec4 CastInterpProbeDir(ivec2 probe_index, int cascade_index, vec2 interval_length, float dir_indexf)
+{
+    ivec2 face_size = textureSize(iChannel0, 0);    
+    ivec2 viewport_size = textureSize(iChannel1, 0);
+    CascadeSize c0_size = GetC0Size(viewport_size);
+    CascadeSize cascade_size = GetCascadeSize(cascade_index, c0_size);
     
-//     vec2 probe_screen_pos = GetProbeScreenPos(vec2(probe_index), cascade_index, c0_size);
+    vec2 probe_screen_pos = GetProbeScreenPos(vec2(probe_index), cascade_index, c0_size);
 
-//     vec4 interp_interval = vec4(0.0f);
-//     LinearSamples dir_samples = GetLinearSamples(dir_indexf);
-//     vec2 weights = GetLinearWeights(dir_samples.ratio);
-//     for(int i = 0; i < 2; i++)
-//     {
-//         int dir_index = (dir_samples.base_index + i + cascade_size.dirs_count) % cascade_size.dirs_count;
-//         vec2 ray_dir = GetProbeDir(float(dir_index), cascade_size.dirs_count);
+    vec4 interp_interval = vec4(0.0f);
+    LinearSamples dir_samples = GetLinearSamples(dir_indexf);
+    vec2 weights = GetLinearWeights(dir_samples.ratio);
+    for(int i = 0; i < 2; i++)
+    {
+        int dir_index = (dir_samples.base_index + i + cascade_size.dirs_count) % cascade_size.dirs_count;
+        vec2 ray_dir = GetProbeDir(float(dir_index), cascade_size.dirs_count);
         
-//         vec2 ray_start = probe_screen_pos * vec2(viewport_size) + ray_dir * interval_length.x;
-//         vec2 ray_end = probe_screen_pos * vec2(viewport_size) + ray_dir * interval_length.y;                
+        vec2 ray_start = probe_screen_pos * vec2(viewport_size) + ray_dir * interval_length.x;
+        vec2 ray_end = probe_screen_pos * vec2(viewport_size) + ray_dir * interval_length.y;                
 
-//         RayHit ray_hit = radiance(iChannel1, ray_start, normalize(ray_end - ray_start), length(ray_end - ray_start));
-//         interp_interval += ray_hit.radiance * weights[i];
-//     }
-//     return interp_interval;
-// }
+        RayHit ray_hit = radiance(iChannel1, ray_start, normalize(ray_end - ray_start), length(ray_end - ray_start));
+        interp_interval += ray_hit.radiance * weights[i];
+    }
+    return interp_interval;
+}
 
-// vec4 CastMergedIntervalInnerParallaxFix(ivec2 probe_index, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
-// {
-//     ivec2 face_size = textureSize(iChannel0, 0);    
-//     ivec2 viewport_size = textureSize(iChannel1, 0);
-//     CascadeSize c0_size = GetC0Size(viewport_size);
-//     CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
-//     int cascade_index = prev_cascade_index - 1;
-//     CascadeSize cascade_size = GetCascadeSize(cascade_index, c0_size);
-//     vec2 probe_screen_pos = GetProbeScreenPos(vec2(probe_index), cascade_index, c0_size);
-//     BilinearSamples bilinear_samples = GetProbeBilinearSamples(probe_screen_pos, prev_cascade_index, c0_size);
-//     vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
-//     vec4 merged_interval = vec4(0.0f);
-//     for(int i = 0; i < 4; i++)
-//     {
-//         ProbeLocation prev_probe_location;
-//         prev_probe_location.cascade_index = prev_cascade_index;
-//         prev_probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
-//         prev_probe_location.dir_index = prev_dir_index;
+vec4 CastMergedIntervalInnerParallaxFix(ivec2 probe_index, vec2 dir, vec2 interval_length, int prev_cascade_index, int prev_dir_index)
+{
+    ivec2 face_size = textureSize(iChannel0, 0);    
+    ivec2 viewport_size = textureSize(iChannel1, 0);
+    CascadeSize c0_size = GetC0Size(viewport_size);
+    CascadeSize prev_cascade_size = GetCascadeSize(prev_cascade_index, c0_size);
+    int cascade_index = prev_cascade_index - 1;
+    CascadeSize cascade_size = GetCascadeSize(cascade_index, c0_size);
+    vec2 probe_screen_pos = GetProbeScreenPos(vec2(probe_index), cascade_index, c0_size);
+    BilinearSamples bilinear_samples = GetProbeBilinearSamples(probe_screen_pos, prev_cascade_index, c0_size);
+    vec4 weights = GetBilinearWeights(bilinear_samples.ratio);
+    vec4 merged_interval = vec4(0.0f);
+    for(int i = 0; i < 4; i++)
+    {
+        ProbeLocation prev_probe_location;
+        prev_probe_location.cascade_index = prev_cascade_index;
+        prev_probe_location.probe_index = clamp(bilinear_samples.base_index + GetBilinearOffset(i), ivec2(0), prev_cascade_size.probes_count - ivec2(1));
+        prev_probe_location.dir_index = prev_dir_index;
 
 
-//         int pixel_index = ProbeLocationToPixelIndex(prev_probe_location, c0_size);
-//         ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
+        int pixel_index = ProbeLocationToPixelIndex(prev_probe_location, c0_size);
+        ivec3 texel_index = PixelIndexToCubemapTexel(face_size, pixel_index);
 
-//         vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-//         if(prev_cascade_index < nCascades)
-//             prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
+        vec4 prev_interval = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        if(prev_cascade_index < nCascades)
+            prev_interval = cubemapFetch(iChannel0, texel_index.z, texel_index.xy);
 
-//         vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_location.probe_index), prev_probe_location.cascade_index, c0_size);
+        vec2 prev_screen_pos = GetProbeScreenPos(vec2(prev_probe_location.probe_index), prev_probe_location.cascade_index, c0_size);
 
-//         vec2 ray_start = probe_screen_pos * vec2(viewport_size) + dir * interval_length.x;
-//         vec2 ray_end = prev_screen_pos * vec2(viewport_size) + dir * interval_length.y;
+        vec2 ray_start = probe_screen_pos * vec2(viewport_size) + dir * interval_length.x;
+        vec2 ray_end = prev_screen_pos * vec2(viewport_size) + dir * interval_length.y;
         
-//         vec2 ray_dir = normalize(ray_end - ray_start);
-//         float dir_indexf = GetDirIndexf(ray_dir, cascade_size.dirs_count);
+        vec2 ray_dir = normalize(ray_end - ray_start);
+        float dir_indexf = GetDirIndexf(ray_dir, cascade_size.dirs_count);
 
-//         vec4 ray_hit_radiance = CastInterpProbeDir(probe_index, cascade_index, interval_length, dir_indexf);
-//         merged_interval += MergeIntervals(ray_hit_radiance, prev_interval) * weights[i];
-//     }
-//     return merged_interval;
-// }
+        vec4 ray_hit_radiance = CastInterpProbeDir(probe_index, cascade_index, interval_length, dir_indexf);
+        merged_interval += MergeIntervals(ray_hit_radiance, prev_interval) * weights[i];
+    }
+    return merged_interval;
+}
 
 
 void mainCubemap(out vec4 fragColor, vec2 fragCoord, vec3 fragRO, vec3 fragRD) {
@@ -412,7 +412,7 @@ void mainCubemap(out vec4 fragColor, vec2 fragCoord, vec3 fragRO, vec3 fragRD) {
         // if (probe_location.cascade_index == nCascades - 1 && mod(iTime + PI/2.0, 2.0*PI) < PI) {
         if (probe_location.cascade_index == nCascades - 1) {
             vec2 angle = vec2(prev_dir_index, prev_dir_index + 1) / float(prev_cascade_size.dirs_count) * 2.0 * PI;
-            merged_inteval.rgb += float(avg_dirs_count) * integrateSkyRadiance(angle) / (angle.y - angle.x);
+            // merged_inteval.rgb += float(avg_dirs_count) * integrateSkyRadiance(angle) / (angle.y - angle.x);
         }
 
         merged_avg_interval += merged_inteval / float(avg_dirs_count);  

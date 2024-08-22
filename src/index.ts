@@ -3,6 +3,7 @@ import cubeAShaderSrc from "./shaders/cubeMap.fragment.glsl";
 import imageShaderSrc from "./shaders/image.fragment.glsl";
 import geometricsdffont from "./shaders/geometricsdffont.fragment.glsl";
 import slerpy from "./slerp";
+import { boxes, initBoxes, update, superMode, superModeAvailable } from "./gamestate";
 // import TinySDFRenderer from "./tinysdf";
 
 const canvas = <HTMLCanvasElement>document.getElementById("glcanvas");
@@ -89,7 +90,7 @@ let moveMagnitude = 0;
 let moveAngle = 0;
 
 // Update the mouse position on mouse move
-canvas.addEventListener("mousemove", (event) => {
+window.addEventListener("mousemove", (event) => {
   const newMouseX = event.clientX;
   const newMouseY = canvas.height - event.clientY; // Flip Y axis for WebGL
 
@@ -326,6 +327,14 @@ const renderCubemap = (face: number) => {
   drawQuad(gl);
 };
 
+// Exit fullscreen on escape key
+// document.addEventListener("keydown", (event) => {
+//   if (event.key === "Escape") {
+//     document.exitFullscreen();
+//   }
+// });
+
+const debug = window.location.search.includes("debug");
 // const sdfRenderer = new TinySDFRenderer();
 // const atlas = sdfRenderer.render(["A", "B", "C", "D", "1", "3", "L", "T"]);
 // Render geometric SDF to a float texture
@@ -353,10 +362,11 @@ function render() {
   if (!bufferBProgram || !cubeAProgram || !imageProgram || !geometricSDFProgram) return;
 
   // Set the fps of the #fps element
-  const fps = 1000 / (performance.now() - timeOfRender);
-  timeOfRender = performance.now();
-  document.getElementById("fps")!.innerText = fps.toFixed(2);
-
+  if (debug) {
+    const fps = 1000 / (performance.now() - timeOfRender);
+    timeOfRender = performance.now();
+    document.getElementById("fps")!.innerText = fps.toFixed(2);
+  }
   // Toggle between the two textures
   bufferATextureIndex = 1 - bufferATextureIndex;
   bufferBTextureIndex = 1 - bufferBTextureIndex;
@@ -373,6 +383,19 @@ function render() {
 
   //   useShader(gl, bufferAProgram);
   //   drawQuad(gl);
+  if (atlasRendered < 1) {
+    initBoxes(canvas.width, canvas.height);
+  }
+  update(
+    performance.now(),
+    document.getElementById("timer")!,
+    document.getElementById("score")!,
+    document.getElementById("lives")!,
+    mouseX,
+    mouseY,
+    mouseDown ? true : false,
+  );
+
   if (atlasRendered < 2) {
     console.log(mAsynchCompile);
     setRenderTarget(geomtricSdfBuffer.targets[geometricSdfTextureIndex]); // Ensure framebuffer is bound
@@ -395,9 +418,13 @@ function render() {
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, geomtricSdfBuffer.textures[geometricSdfTextureIndex]);
-  gl.uniform1i(gl.getUniformLocation(bufferBProgram, "iChannel0"), 0);
 
   useShader(gl, bufferBProgram);
+
+  gl.uniform1i(gl.getUniformLocation(bufferBProgram, "iChannel0"), 0);
+
+  gl.uniform1f(gl.getUniformLocation(bufferBProgram, "u_super"), superMode);
+  gl.uniform1f(gl.getUniformLocation(bufferBProgram, "u_superAvailable"), superModeAvailable);
 
   // We have a TinySDFRenderer class, that returns a canvas element
   // We use this canvas element as a texture in the shader
@@ -428,6 +455,25 @@ function render() {
   const mouseMoveLocation = gl.getUniformLocation(bufferBProgram, "iMouseMove");
   gl.uniform2f(mouseMoveLocation, moveAngle, moveMagnitude);
 
+  const boxesLocation = gl.getUniformLocation(bufferBProgram, "u_boxes");
+  // the uniform is: uniform mat4 u_boxes[13]
+  const boxesData = new Float32Array(13 * 16);
+  for (let i = 0; i < 13; i++) {
+    const box = boxes[i];
+    const offset = i * 16;
+    boxesData[offset] = box.x; // 1st row
+    boxesData[offset + 1] = box.y;
+    boxesData[offset + 2] = box.size;
+    boxesData[offset + 3] = box.value;
+    boxesData[offset + 4] = box.dx; // 2nd row
+    boxesData[offset + 5] = box.dy;
+    boxesData[offset + 6] = box.enemy;
+    boxesData[offset + 7] = 0; // pad
+    boxesData[offset + 8] = box.r; // 3rd row
+    boxesData[offset + 9] = box.g;
+    boxesData[offset + 10] = box.b;
+  }
+  gl.uniformMatrix4fv(boxesLocation, false, boxesData);
   drawQuad(gl);
 
   // Render to Cubemap
