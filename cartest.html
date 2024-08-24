@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car on Ice</title>
+    <style>
+        canvas {
+            background-color: #f0f0f0;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="1000" height="1000"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let rect = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            width: 30,
+            height: 60,
+            color: 'blue',
+            speed: 0,
+            maxSpeed: 5,
+            maxBackwardSpeed: -2,
+            acceleration: 0.05,
+            rotation: 0,
+            rotationSpeed: 0.03,
+            friction: 0.99,
+            boost: false,
+            visualRotation: 0, // Separate visual rotation for rear-end effect
+            visualRotationSpeed: 0.1, // Speed of visual rotation adjustment
+            previousSpeedX: 0,
+            previousSpeedY: 0,
+            lateralGForce: 0,
+            trail: []
+        };
+
+        const keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false,
+            Space: false
+        };
+
+        document.addEventListener('keydown', (e) => {
+            if (keys[e.code] !== undefined) keys[e.code] = true;
+
+            if(keys.Space) {
+                rect.boost = true;
+                rect.color = 'red';
+                rect.acceleration = 0.3;
+                rect.maxSpeed = 10;
+                rect.maxBackwardSpeed = -5;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (keys[e.code] !== undefined) keys[e.code] = false;
+
+            if(keys.Space === false) {
+                rect.boost = false;
+                rect.color = 'blue';
+                rect.acceleration = 0.05;
+                rect.maxSpeed = 5;
+                rect.maxBackwardSpeed = -2;
+            }
+
+        });
+
+        function update() {
+            // Acceleration and speed control
+            if (keys.ArrowUp) {
+                rect.speed += rect.acceleration;
+                if (rect.speed > rect.maxSpeed) {
+                    // Reduce speed until max speed is reached
+                    rect.speed -= rect.acceleration;
+                }
+            }
+            if (keys.ArrowDown) {
+                rect.speed -= rect.acceleration;
+                if (rect.speed < -rect.maxSpeed) {
+                    // Reduce speed until max speed is reached
+                    rect.speed += rect.acceleration;
+                }
+            }
+
+            // Rotation, which should be dependent on speed
+            if (keys.ArrowLeft) {
+                rect.rotation -= rect.rotationSpeed * (Math.abs(rect.speed) / rect.maxSpeed);
+                // rect.rotation -= rect.rotationSpeed;
+            }
+            if (keys.ArrowRight) {
+                rect.rotation += rect.rotationSpeed * (Math.abs(rect.speed) / rect.maxSpeed);
+                // rect.rotation += rect.rotationSpeed;
+            }
+
+            // Apply friction
+            rect.speed *= rect.friction;
+
+            // Update position
+            const newSpeedX = Math.cos(rect.rotation - Math.PI/2) * rect.speed;
+            const newSpeedY = Math.sin(rect.rotation - Math.PI/2) * rect.speed;
+
+            rect.x += newSpeedX;
+            rect.y += newSpeedY;
+
+            // Record 1000 positions for drawing the trail
+            rect.trail.unshift({ x: rect.x, y: rect.y });
+            if (rect.trail.length > 1000) rect.trail.pop();
+
+
+            // Calculate the lateral G-force acting on the car (based on change in direction)
+            const deltaX = newSpeedX - rect.previousSpeedX;
+            const deltaY = newSpeedY - rect.previousSpeedY;
+
+
+// Calculate the forward G force (aligned with the car's current rotation)
+rect.lateralGForce = (deltaX * Math.cos(rect.rotation) + deltaY * Math.sin(rect.rotation)) * 5;
+
+// Visual rotation should gradually increase towards the lateral G force
+rect.visualRotation += (rect.lateralGForce - rect.visualRotation) * rect.visualRotationSpeed;
+
+// Calculate the side-to-side (lateral) G force (perpendicular to the car's rotation)
+rect.forwardGForce = (deltaY * Math.cos(rect.rotation) - deltaX * Math.sin(rect.rotation));
+
+            // Save the current speed components for the next frame
+            rect.previousSpeedX = newSpeedX;
+            rect.previousSpeedY = newSpeedY;
+
+            // Screen wrapping
+            if (rect.x > canvas.width) rect.x = 0;
+            if (rect.x < 0) rect.x = canvas.width;
+            if (rect.y > canvas.height) rect.y = 0;
+            if (rect.y < 0) rect.y = canvas.height;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(rect.x, rect.y);
+            ctx.rotate(rect.rotation + rect.visualRotation); // Apply visual rotation for rear-end effect
+            ctx.fillStyle = rect.color;
+            ctx.fillRect(-rect.width / 2, -rect.height / 2, rect.width, rect.height);
+            // Draw a small triangle to mark the front of the car, more red = more forward G force
+            const color = Math.min(255, Math.abs(rect.forwardGForce) * 1000);
+            ctx.fillStyle = `rgb(${color}, 255, 0)`;
+            ctx.beginPath();
+            ctx.moveTo(0, -rect.height / 2); // Point at the front
+            ctx.lineTo(-rect.width / 4, 0); // Bottom left corner of the triangle
+            ctx.lineTo(rect.width / 4, 0); // Bottom right corner of the triangle
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw the lateral G-force indicator
+            ctx.fillStyle = 'black';
+            ctx.font = '12px Arial';
+            ctx.fillText('Lateral G-force: ' + rect.lateralGForce.toFixed(2), -rect.width / 2, rect.height / 2 + 20);
+            // Draw the speed
+            ctx.fillText('Speed: ' + rect.speed.toFixed(2), -rect.width / 2, rect.height / 2 + 40);
+            // Forward G-force
+            ctx.fillText('Forward G-force: ' + rect.forwardGForce.toFixed(2), -rect.width / 2, rect.height / 2 + 60);
+            ctx.restore();
+
+                        // Draw trail
+                        ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+
+            for (let i = 1; i < rect.trail.length; i++) {
+                ctx.moveTo(rect.x, rect.y);
+                // Draw a circle at each point in the trail
+                ctx.beginPath();
+                ctx.arc(rect.trail[i].x, rect.trail[i].y, 2, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.stroke();
+            }
+            // ctx.closePath();
+
+            // Draw the pressed keys by simply writing them on the screen
+            ctx.fillStyle = 'black';
+            ctx.font = '12px Arial';
+            let pressed = '';
+            for (let i = 0; i < Object.keys(keys).length; i++) {
+                if (keys[Object.keys(keys)[i]]) {
+                    pressed += Object.keys(keys)[i] + ' ';
+                }
+            }
+            ctx.fillText('Pressed keys: ' + pressed, 10, 20);
+
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>

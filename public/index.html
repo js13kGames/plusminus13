@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WebGL Game</title>
+    <title>±13</title>
     <style>
         body, html { margin: 0; height: 100%;  }
         canvas { width: 100%; height: 100%; display: block; }
@@ -9,11 +9,12 @@
         body {
     display: flex;
     justify-content: center;
+    font-family: monospace;
     align-items: center;
     height: 100vh;
 }
 
-.game-ui {
+#game-ui {
     position: absolute; /* Makes the UI float above the canvas */
     top: 0; /* Positions at the top */
     left: 0;
@@ -24,7 +25,7 @@
     width: 100%; /* Takes full width to align items properly */
     padding: 10px 20px; /* Adjust padding to ensure visibility */
     box-sizing: border-box; /* Ensures padding doesn't add to the width */
-    font-family: monospace;
+
     font-size: 3em;
     color: white;
 }
@@ -41,7 +42,7 @@
 
 #lives {
     font-weight: bold; /* Makes the heart symbols bolder */
-    font-size: 3em;
+    font-size: 2em;
     color: red;
     line-height: 0;
 }
@@ -72,6 +73,38 @@
     animation: blink 1s infinite;
 }
 
+#over {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 3em;
+    color: white;
+    text-align: center;
+}
+
+#start {
+    position: absolute;
+    top: 75%;
+    left: 50%;
+    transform: translate(-50%, -75%);
+    font-size: 2em;
+    color: #eee;
+    text-align: center;
+}
+#start button, #over button {
+    font-size: 1em;
+    padding: 0.5em 1em;
+    background: #333;
+    color: white;
+    border: none;
+    cursor: pointer;
+    margin-top: 1em;
+}
+
+#start button:hover, #over button:hover {
+    background: #444;
+}
 @keyframes blink {
     0%, 100% { background: #000; }
     50% { background: #fff; }
@@ -80,7 +113,7 @@
     </style>
 </head>
 <body>
-    <div class="game-ui">
+    <div id="game-ui" style="display: none;">
         <div id="lives">
             ♥️♥️♥️
         </div>
@@ -91,7 +124,19 @@
             </div></div>
         </div>
     </div>
+    <div id="start">
+        <p>WASD, Space for super</p>
+        <button>Start</button>
+    </div>
+    <div id="over" style="display: none;">
+        Game Over<br>
+        <div id="scoreboard">
+
+        </div>
+        <button onclick="location.reload()">Restart</button>
+    </div>
     <div id="fps"></div>
     <canvas id="glcanvas"></canvas>
+    <!-- <canvas id="2dcanvas" style="position: absolute;"></canvas> -->
 </body>
 </html>

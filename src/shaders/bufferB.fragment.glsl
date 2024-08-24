@@ -10,6 +10,7 @@ out vec4 fragColor;
 uniform float iTime; 
 uniform float u_super;
 uniform float u_superAvailable;
+uniform float u_gameStarted;
 uniform mat4 u_boxes[13];
 
 const float PI = 3.14159265359;
@@ -137,7 +138,7 @@ vec2 rotate(vec2 p, float angle) {
 // Main SDF function for the stickman, applying hierarchical transformations
 float sdStickman2(vec2 p, vec2 pos, float headLen, float rot, float super, float magnitude) {
     // Rotate and translate point p into head's local coordinate space
-    vec2 localP = rotate(p - pos, rot + super * 0.07 * cos(20.0*iTime));
+    vec2 localP = rotate(p - pos, rot + 0.01 * cos(20.0*iTime));
     float time = mod(iTime,2.0*PI);
     // Head - no need to translate or rotate further as it is the root
     float head = sdCapsuleFixed(localP, vec2(0,0), headLen, 0.0, 15.0);
@@ -183,7 +184,9 @@ float digit0(vec2 p, float scale) {
 }
 
 float digit1(vec2 p, float scale) {
-  return sdCapsuleFixed(p, vec2(0.0, 0.7) * scale, 1.4 * scale, 0.0, 0.2 * scale);
+  float d = sdCapsuleFixed(p, vec2(0.0, 0.7) * scale, 1.4 * scale, 0.0, 0.2 * scale);
+    d = min(d, sdCapsuleFixed(p, vec2(0.0, 0.7) * scale, 0.5 * scale, 1.0, 0.2 * scale));
+    return d;
 }
 
 float digit2(vec2 p, float scale) {
@@ -324,10 +327,11 @@ for (int i = 0; i < 13; i++) {
 
     // Use the u_boxes array to draw circles
     vec2 center = u_boxes[i][0].xy;
-    float radius = u_boxes[i][0].z;
+    float radius = u_boxes[i][0].z * 0.6;
     float value = u_boxes[i][0].w;
+    float radiance = u_boxes[i][1].w;
     // color is in the 7, 8 and 9th index of the u_boxes mat4
-    vec3 color = u_boxes[i][2].xyz / 255.0;
+    vec3 color = u_boxes[i][2].xyz / 255.0 * radiance;
 
 
     // vec2 translatedUV = tuv;
@@ -432,13 +436,12 @@ float rotation = iMouseMove.x;
 float clicked = iMouse.z;
 // If rotation is close to -PI, we want to null it and instead apply 'super' to the arms
 if (rotation < -3.0 || rotation > 3.0) {
-    rotation = 0.0;
     clicked = 1.0;
 }
 
 // Calculate the SDF of the circle at the mouse position
 // float sd = sdCapsuleFixed(p, mousePos, mouseRadius, rotation * magnitude * 15.0);
-float sd = sdStickman2(p, mousePos, 20.0, rotation * magnitude * 15.0, clicked * u_superAvailable, magnitude);
+float sd = sdStickman2(p, mousePos, 20.0, rotation, clicked * u_superAvailable, magnitude);
 // Determine the circle color based on the mouse state
 vec3 circleColor;
 if (iMouse.z > 0.0 && u_super > 0.0 && u_superAvailable > 0.0) {
@@ -446,7 +449,7 @@ if (iMouse.z > 0.0 && u_super > 0.0 && u_superAvailable > 0.0) {
 } else if (iMouse.w > 0.0) {
     circleColor = vec3(0.0, 0.0, 0.0); // White color if mouse is clicked
 } else {
-    circleColor = vec3(magnitude * 15.0, 0.0, 0.0); // Default blue color
+    circleColor = vec3(0.0, 0.0, 0.0); // Default blue color
 }
 // circleColor = vec3(
 //     0.5 + 0.5 * sin(time * 2.0),
@@ -461,11 +464,6 @@ if (iMouse.z > 0.0 && u_super > 0.0 && u_superAvailable > 0.0) {
 // minDist = textColor.r;// * 90.0;
 
 // minDist = 
-// // Check if the circle is closer than the closest capsule
-if (sd < minDist) {
-    minDist = sd;
-    finalColor = circleColor;
-}
 
 // if (uv.x > 0.55 && uv.y > 0.4 && uv.x < 0.88 && uv.y < 0.6) {
 //     finalColor = vec3(0.5 + 0.5*sin(iTime), 0.0, 0.0);
@@ -480,7 +478,37 @@ if (sd < minDist) {
 // float scaledDist = (1.0 - textColor.a) * factor;
 // float dist = min(min(sd,minDist), textColor.r * 100.0);
 
+if(u_gameStarted < 0.5) {
+    vec2 middle = resolution.xy * 0.5;
+    float d1 = digit1(p - middle - vec2(-75.0,0.0), 100.0);
+    float d2 = digit3(p - middle - vec2(75.0,0.0), 100.0);
+
+    float d3 = sdCapsuleFixed(rotate(p - middle - vec2(-200.0,sin(iTime+PI)*30.0), PI/2.0), vec2(0.0,-22.5), 45.0, PI, 10.0);
+    float d4 = digit10(rotate(p - middle - vec2(-200.0,sin(iTime)*30.0), PI/4.0), 30.0);
+
+    float d = min(d1, min(d2, min(d3, d4)));
+    if(d1 < d2 && d1 < d3 && d1 < d4) {
+        finalColor = vec3(0.0, 0.0, 0.0);
+    } else if(d2 < d1 && d2 < d3 && d2 < d4) {
+        finalColor = vec3(1.0, 0.0, 0.0);
+    } else if(d3 < d1 && d3 < d2 && d3 < d4) {
+        finalColor = vec3(1.0, 1.0, 1.0);
+    } else if(d4 < d1 && d4 < d2 && d4 < d3) {
+        finalColor = vec3(1.0, 1.0, 1.0);
+    }
+    minDist = min(d, minDist);
+
+    // fragColor = vec4(min(minDist, d), color);}
+}
+
+// // Check if the circle is closer than the closest capsule
+if (sd < minDist) {
+    minDist = sd;
+    finalColor = circleColor;
+}
 fragColor = vec4(minDist, finalColor);
+
+  // // Output the final color
 
 // fragColor = textColor;
   // // Calculate the center of the screen

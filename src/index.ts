@@ -3,8 +3,17 @@ import cubeAShaderSrc from "./shaders/cubeMap.fragment.glsl";
 import imageShaderSrc from "./shaders/image.fragment.glsl";
 import geometricsdffont from "./shaders/geometricsdffont.fragment.glsl";
 import slerpy from "./slerp";
-import { boxes, initBoxes, update, superMode, superModeAvailable } from "./gamestate";
-// import TinySDFRenderer from "./tinysdf";
+import {
+  boxes,
+  initBoxes,
+  update,
+  superMode,
+  superModeAvailable,
+  gameStarted,
+  startGame,
+} from "./gamestate";
+import Music from "./music";
+import { playRandomSound } from "./sound";
 
 const canvas = <HTMLCanvasElement>document.getElementById("glcanvas");
 if (!canvas) {
@@ -80,49 +89,147 @@ function resizeCanvas() {
 window.addEventListener("resize", resizeCanvas);
 
 // Store mouse position and movement
-let mouseX = 0;
-let mouseY = 0;
-let mouseDown = 0;
-let mouseClicked = 0;
-let moveX = 0;
-let moveY = 0;
-let moveMagnitude = 0;
+let cX = canvas.width / 2;
+let cY = canvas.height / 2 + 300;
 let moveAngle = 0;
+let moveSpeed = 0.0;
+let moveAccel = 0.05;
+let maxSpeed = 5.0;
+const friction = 0.99;
+let rotationSpeed = 0.03;
+let previousSpeedX = 0.0;
+let previousSpeedY = 0.0;
+let lateralGForce = 0.0;
+const forwardGForce = 0.0;
+let visualRotation = 0.0;
+const visualRotationSpeed = 0.1;
+let maxBackwardSpeed = -2;
 
-// Update the mouse position on mouse move
-window.addEventListener("mousemove", (event) => {
-  const newMouseX = event.clientX;
-  const newMouseY = canvas.height - event.clientY; // Flip Y axis for WebGL
+let musicStarted = 0;
 
-  const newMoveX = (newMouseX - mouseX) / canvas.width;
-  const newMoveY = (newMouseY - mouseY) / canvas.height;
+const start = () => {
+  startGame();
+  document.querySelector("#start")?.setAttribute("style", "display: none");
+  document.getElementById("game-ui")?.setAttribute("style", "display: flex");
+  if (!musicStarted) {
+    new Music().start();
+    musicStarted = 1;
+  }
+  playRandomSound();
+};
 
-  // Smooth out moveX and moveY
-  moveX = moveX * 0.5 + newMoveX * 0.5;
-  moveY = moveY * 0.5 + newMoveY * 0.5;
+document.querySelector("#start button")?.addEventListener("click", start);
 
-  // moveX = newMoveX;
-  // moveY = newMoveY;
-  // Calculate the magnitude and angle of the movement
-  // moveMagnitude = Math.hypot(newMoveX, newMoveY);
-  // moveAngle = Math.atan2(newMoveX, newMoveY);
-  moveMagnitude = Math.hypot(moveX, moveY);
-  moveAngle = Math.atan2(moveX, moveY);
+// canvas.addEventListener("mousedown", (event) => {
+//   // mouseDown = 1;
+//   // mouseClicked = 1;
+// });
 
-  // moveX = 0.0;
-  // moveY = -1.0;
-  mouseX = newMouseX;
-  mouseY = newMouseY;
+// canvas.addEventListener("mouseup", (event) => {
+//   // mouseDown = 0;
+// });
+
+// Add keyboard controls, that move the character via the moveX, moveY, cX, cY
+const keyState: { [key: string]: boolean } = {
+  ArrowUp: false,
+  ArrowDown: false,
+  ArrowLeft: false,
+  ArrowRight: false,
+  w: false,
+  s: false,
+  a: false,
+  d: false,
+  Space: false,
+};
+
+window.addEventListener("keydown", (event) => {
+  keyState[event.code] = true;
+
+  // Start game if Return key is pressed
+  if (event.code === "Enter" && !gameStarted) {
+    startGame();
+  }
 });
 
-canvas.addEventListener("mousedown", (event) => {
-  mouseDown = 1;
-  mouseClicked = 1;
+window.addEventListener("keyup", (event) => {
+  keyState[event.code] = false;
 });
 
-canvas.addEventListener("mouseup", (event) => {
-  mouseDown = 0;
-});
+function updateMovement() {
+  // console.log(moveAngle, lateralGForce, visualRotation);
+  if (keyState.Space) {
+    if (true) {
+      console.log("superMode");
+      // superMode = 1;
+      maxSpeed = 10.0;
+      moveAccel = 0.3;
+      maxBackwardSpeed = -5;
+      rotationSpeed = 0.07;
+    }
+  } else {
+    // superMode = 0;
+    maxBackwardSpeed = -2;
+    rotationSpeed = 0.03;
+    moveAccel = 0.05;
+    maxSpeed = 5.0;
+  }
+
+  // Acceleration and speed control
+  if (keyState.ArrowUp) {
+    moveSpeed += moveAccel;
+    if (moveSpeed > maxSpeed) {
+      // Reduce speed until max speed is reached
+      moveSpeed -= moveAccel;
+    }
+  }
+  if (keyState.ArrowDown) {
+    moveSpeed -= moveAccel;
+    if (moveSpeed < maxBackwardSpeed) {
+      // Reduce speed until max speed is reached
+      moveSpeed += moveAccel;
+    }
+  }
+
+  // Rotation, which should be dependent on speed
+  if (keyState.ArrowLeft) {
+    moveAngle -= rotationSpeed * (Math.abs(moveSpeed) / maxSpeed);
+  }
+  if (keyState.ArrowRight) {
+    moveAngle += rotationSpeed * (Math.abs(moveSpeed) / maxSpeed);
+  }
+
+  // Apply friction
+  moveSpeed *= friction;
+
+  // Update position
+  const newSpeedX = Math.cos(moveAngle - Math.PI / 2) * moveSpeed;
+  const newSpeedY = Math.sin(moveAngle - Math.PI / 2) * moveSpeed;
+
+  cX += newSpeedX;
+  cY -= newSpeedY;
+
+  // Calculate the lateral G-force acting on the car (based on change in direction)
+  const deltaX = newSpeedX - previousSpeedX;
+  const deltaY = newSpeedY - previousSpeedY;
+
+  // Calculate the side-to-side (lateral) G force (perpendicular to the car's rotation)
+  lateralGForce = (deltaX * Math.cos(moveAngle) + deltaY * Math.sin(moveAngle)) * 3.0;
+
+  // Visual rotation should gradually increase towards the lateral G force
+  visualRotation += (lateralGForce - visualRotation) * visualRotationSpeed;
+
+  // forwardGForce = deltaY * Math.sin(moveAngle) - deltaX * Math.cos(moveAngle);
+
+  // Save the current speed components for the next frame
+  previousSpeedX = newSpeedX;
+  previousSpeedY = newSpeedY;
+
+  // Screen wrapping
+  if (cX > canvas.width) cX = 0;
+  if (cX < 0) cX = canvas.width;
+  if (cY > canvas.height) cY = 0;
+  if (cY < 0) cY = canvas.height;
+}
 
 function resizeBuffer(gl: WebGL2RenderingContext, fbObj: any) {
   const width = gl.canvas.width;
@@ -367,6 +474,8 @@ function render() {
     timeOfRender = performance.now();
     document.getElementById("fps")!.innerText = fps.toFixed(2);
   }
+
+  updateMovement();
   // Toggle between the two textures
   bufferATextureIndex = 1 - bufferATextureIndex;
   bufferBTextureIndex = 1 - bufferBTextureIndex;
@@ -391,9 +500,11 @@ function render() {
     document.getElementById("timer")!,
     document.getElementById("score")!,
     document.getElementById("lives")!,
-    mouseX,
-    mouseY,
-    mouseDown ? true : false,
+    document.getElementById("over")!,
+    cX,
+    cY,
+    visualRotation + moveAngle, // the rotation of the character
+    keyState.Space ? true : false,
   );
 
   if (atlasRendered < 2) {
@@ -426,34 +537,14 @@ function render() {
   gl.uniform1f(gl.getUniformLocation(bufferBProgram, "u_super"), superMode);
   gl.uniform1f(gl.getUniformLocation(bufferBProgram, "u_superAvailable"), superModeAvailable);
 
-  // We have a TinySDFRenderer class, that returns a canvas element
-  // We use this canvas element as a texture in the shader
-  // gl.activeTexture(gl.TEXTURE1);
-  // const texture = gl.createTexture();
-  // // Use the atlas canvas as a texture
-  // gl.bindTexture(gl.TEXTURE_2D, texture);
-
-  // // Set texture parameters
-  // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-  // // Flip the Y axis
-  // gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-  // // Upload the canvas as a texture
-
-  // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas);
-  // const textureLocation = gl.getUniformLocation(bufferBProgram, "iChannel1");
-
-  // Set the uniform to use texture unit 0
-  // gl.uniform1i(textureLocation, 1);
+  // Game started?
+  gl.uniform1f(gl.getUniformLocation(bufferBProgram, "u_gameStarted"), gameStarted ? 1 : 0);
 
   const mouseLocation = gl.getUniformLocation(bufferBProgram, "iMouse");
-  gl.uniform4f(mouseLocation, mouseX, mouseY, mouseDown, mouseClicked);
+  gl.uniform4f(mouseLocation, cX, cY, keyState.Space ? 1 : 0, 0);
 
   const mouseMoveLocation = gl.getUniformLocation(bufferBProgram, "iMouseMove");
-  gl.uniform2f(mouseMoveLocation, moveAngle, moveMagnitude);
+  gl.uniform2f(mouseMoveLocation, moveAngle + visualRotation, Math.abs(moveSpeed));
 
   const boxesLocation = gl.getUniformLocation(bufferBProgram, "u_boxes");
   // the uniform is: uniform mat4 u_boxes[13]
@@ -468,7 +559,7 @@ function render() {
     boxesData[offset + 4] = box.dx; // 2nd row
     boxesData[offset + 5] = box.dy;
     boxesData[offset + 6] = box.enemy;
-    boxesData[offset + 7] = 0; // pad
+    boxesData[offset + 7] = box.radiance; // pad
     boxesData[offset + 8] = box.r; // 3rd row
     boxesData[offset + 9] = box.g;
     boxesData[offset + 10] = box.b;
@@ -518,12 +609,6 @@ function render() {
 
   drawQuad(gl);
 
-  // Mouse movement decays
-  const result = slerpy(moveAngle, 0, moveMagnitude, 0, 0.1);
-  moveAngle = result.angle;
-  moveMagnitude = result.magnitude;
-
-  mouseClicked = 0;
   requestAnimationFrame(render);
 }
 
