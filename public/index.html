@@ -78,7 +78,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 3em;
+    font-size: 1em;
     color: white;
     text-align: center;
 }
@@ -93,22 +93,32 @@
     text-align: center;
 }
 #start button, #over button {
-    font-size: 1em;
-    padding: 0.5em 1em;
-    background: #333;
+    padding: 1em 3em;
+    border-radius: 2em;
+    background: transparent;
     color: white;
-    border: none;
+    border: 1px solid;
     cursor: pointer;
     margin-top: 1em;
+    font-family: monospace;
 }
 
 #start button:hover, #over button:hover {
     background: #444;
 }
+
+#dcanvas {
+  position: relative;
+  z-index: -1000;
+  display: none;
+}
+
+
 @keyframes blink {
     0%, 100% { background: #000; }
     50% { background: #fff; }
 }
+
 
     </style>
 </head>
@@ -126,7 +136,12 @@
     </div>
     <div id="start">
         <p>WASD, Space for super</p>
-        <button>Start</button>
+        <button>
+            <!-- Right facing triangle -->
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="0,24 24,12 0,0" fill="white"/>
+            </svg>
+        </button>
     </div>
     <div id="over" style="display: none;">
         Game Over<br>
@@ -137,6 +152,6 @@
     </div>
     <div id="fps"></div>
     <canvas id="glcanvas"></canvas>
-    <!-- <canvas id="2dcanvas" style="position: absolute;"></canvas> -->
+    <canvas id="dcanvas" style="position: absolute;"></canvas>
 </body>
 </html>

@@ -1,21 +1,27 @@
 const localStorageName = "d094309ufdHIGHSCORE";
 
-const storeHighScore = (score: number, time: number, id?: number) => {
+type HighScore = {
+  id?: number;
+  score?: number;
+  time?: number;
+  name?: string;
+};
+
+const storeHighScore = ({ id, score, time, name }: HighScore) => {
   // Retrieve high scores from local storage
   const highScores = JSON.parse(localStorage.getItem(localStorageName) || "[]");
 
   // Generate a quick unique ID for this score
-  if (!id) {
-    highScores.push({ id, score, time, name: "Player" });
+  if (id === undefined) {
     id = Date.now();
+    highScores.push({ id, score, time, name: "Player" });
   } else {
     // Find the existing score and update it
-    const entry = highScores.find((entry: any) => entry.id === id);
-    if (entry) {
-      entry.score = score;
-      entry.time = time;
+    const existingScore = highScores.find((entry: { id: number }) => entry.id === id);
+    if (existingScore) {
+      existingScore.name = name;
     } else {
-      highScores.push({ id, score, time, name: "Player" });
+      console.error("Could not find high score with ID", id);
     }
   }
   // Add player's score to high scores array
@@ -33,7 +39,7 @@ const storeHighScore = (score: number, time: number, id?: number) => {
 
 // Gets the high scores from local storage, taking the id of the current player as input
 // The current player can then change their name in the high scores list
-const displayHighScores = (id: number) => {
+const displayHighScores = (id?: number) => {
   // Render the top 10 high scores
   const highScoresList = document.getElementById("scoreboard");
   // Clear previous content
@@ -41,22 +47,28 @@ const displayHighScores = (id: number) => {
   highScoresList.innerHTML = "";
   const highScores = JSON.parse(localStorage.getItem(localStorageName) || "[]");
 
+  // If the player is below the top 10, add them to the list
   highScores
     .slice(0, 10)
     .forEach((entry: { name: any; score: any; time: any; id: number }, index: number) => {
-      const scoreEntry = score(entry, id, index, id === entry.id);
+      const scoreEntry = score(entry, index, !!id && id === entry.id);
       if (highScoresList) {
         highScoresList.appendChild(scoreEntry);
       }
     });
+
+  // If the player is below the top 10, add them to the list
+  const playerScore = highScores.find((entry: { id: number }) => entry.id === id);
+  if (playerScore && highScores.length > 10 && highScores.indexOf(playerScore) >= 10) {
+    const playerIndex = highScores.indexOf(playerScore);
+    const scoreEntry = score(playerScore, playerIndex, true);
+    if (highScoresList) {
+      highScoresList.appendChild(scoreEntry);
+    }
+  }
 };
 
-const score = (
-  entry: { name: any; score: any; time: any; id: any },
-  id: number,
-  index: number,
-  showInput: boolean,
-) => {
+const score = (entry: HighScore, index: number, showInput: boolean) => {
   const scoreEntry = document.createElement("div");
   scoreEntry.className = "score-entry";
 
@@ -69,7 +81,7 @@ const score = (
     // Create an input box for entering the name
     const input = document.createElement("input");
     input.type = "text";
-    input.value = entry.name; // Default value is "Player"
+    input.value = entry.name || ""; // Default value is "Player"
     input.placeholder = "Enter your name";
     input.className = "name-input";
 
@@ -83,9 +95,8 @@ const score = (
       event.preventDefault();
       const newName = input.value.trim();
       if (newName) {
-        entry.name = newName;
-        storeHighScore(entry.score, entry.time, entry.id); // Update the high score
-        displayHighScores(id); // Re-render the high scores list
+        storeHighScore({ id: entry.id, name: newName }); // Update the high score
+        displayHighScores(); // Re-render the high scores list
       }
     };
 
@@ -96,7 +107,7 @@ const score = (
     // Append the form to the score entry
     scoreEntry.appendChild(form);
   } else {
-    scoreEntry.innerHTML = `${index + 1}. ${entry.name || "---"} - ${entry.score} points - ${entry.time}s`;
+    scoreEntry.innerHTML = `${index + 1}. ${entry.name || "---"} - ${entry.score} points - ${entry.time?.toFixed(2).replace(".", ":")}s`;
   }
 
   return scoreEntry;

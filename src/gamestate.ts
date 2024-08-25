@@ -27,17 +27,26 @@ export const boxes: Box[] = [];
 export let superMode = 0;
 export let superModeAvailable = 0;
 export let gameStarted = false;
+let levelRestart = false;
+
+export function shouldlevelRestart(is: boolean) {
+  levelRestart = is;
+}
+export function needsLevelRestart() {
+  return levelRestart;
+}
 
 // Draw the body box
-// const canvasEl = document.getElementById("2dcanvas") as HTMLCanvasElement;
-// const ctx = canvasEl.getContext("2d") as CanvasRenderingContext2D;
-// // Draw some text on the canvas
-// canvasEl.width = window.innerWidth;
-// canvasEl.height = window.innerHeight;
+const canvasEl = document.getElementById("dcanvas") as HTMLCanvasElement;
+const ctx = canvasEl.getContext("2d") as CanvasRenderingContext2D;
+// Draw some text on the canvas
+canvasEl.width = window.innerWidth;
+canvasEl.height = window.innerHeight;
 
 export function startGame() {
   gameStarted = true;
   lastTime = performance.now();
+  shouldlevelRestart(true);
   //   initBoxes(gameWidth, gameHeight);
   score = 0;
 }
@@ -81,18 +90,18 @@ function getBodyBoxCorners(
     rotatePoint(posX - halfWidth, posY + bodyRatio * bodyBox.height, posX, posY, rotation), // bottom-left
   ];
 
-  // ctx.strokeStyle = "white";
-  // ctx.lineWidth = 2;
-  // ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-  // ctx.fillText("Hello, World!", 10, 50);
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 2;
+  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+  ctx.fillText("Hello, World!", 10, 50);
 
-  // ctx.beginPath();
-  // ctx.moveTo(corners[0].x, gameHeight - corners[0].y);
-  // ctx.lineTo(corners[1].x, gameHeight - corners[1].y);
-  // ctx.lineTo(corners[2].x, gameHeight - corners[2].y);
-  // ctx.lineTo(corners[3].x, gameHeight - corners[3].y);
-  // ctx.closePath();
-  // ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(corners[0].x, gameHeight - corners[0].y);
+  ctx.lineTo(corners[1].x, gameHeight - corners[1].y);
+  ctx.lineTo(corners[2].x, gameHeight - corners[2].y);
+  ctx.lineTo(corners[3].x, gameHeight - corners[3].y);
+  ctx.closePath();
+  ctx.stroke();
   // We need to flip the y-axis to match the canvas coordinates
 
   return corners;
@@ -136,6 +145,64 @@ function checkCollision(
   }
 
   return true; // No separation found, collision detected
+}
+
+function checkCollisionBox(box1: Box, box2: Box) {
+  return (
+    box1.x - box1.size / 2 < box2.x + box2.size / 2 &&
+    box1.x + box1.size / 2 > box2.x - box2.size / 2 &&
+    box1.y - box1.size / 2 < box2.y + box2.size / 2 &&
+    box1.y + box1.size / 2 > box2.y - box2.size / 2
+  );
+}
+
+function resolveCollision(box1: Box, box2: Box) {
+  // Calculate collision normal
+  const nx = box2.x - box1.x;
+  const ny = box2.y - box1.y;
+  const len = Math.sqrt(nx * nx + ny * ny);
+  const unx = nx / len;
+  const uny = ny / len;
+
+  // Calculate relative velocity
+  const vrx = box2.dx - box1.dx;
+  const vry = box2.dy - box1.dy;
+
+  // Calculate velocity along the normal
+  const velocityAlongNormal = vrx * unx + vry * uny;
+
+  // Don't resolve if velocities are separating
+  if (velocityAlongNormal > 0) return;
+
+  // Calculate restitution (bounciness)
+  const restitution = 0.1;
+
+  // Calculate impulse scalar
+  const impulseScalar = -(1 + restitution) * velocityAlongNormal;
+
+  // Apply impulse
+  const impulseX = impulseScalar * unx;
+  const impulseY = impulseScalar * uny;
+
+  box1.dx -= impulseX;
+  box1.dy -= impulseY;
+  box2.dx += impulseX;
+  box2.dy += impulseY;
+
+  // Separate the boxes to prevent sticking
+  const percent = 0.2; // usually 20% to 80%
+  const slop = 0.01; // usually 0.01 to 0.1
+  const penetrationDepth = box1.size - len;
+
+  if (penetrationDepth > slop) {
+    const separationX = unx * (penetrationDepth * percent);
+    const separationY = uny * (penetrationDepth * percent);
+
+    box1.x -= separationX / 2;
+    box1.y -= separationY / 2;
+    box2.x += separationX / 2;
+    box2.y += separationY / 2;
+  }
 }
 
 const numBoxes = 13;
@@ -236,24 +303,24 @@ export function update(
     return;
   }
   //   return true;
-  // ctx.clearRect(0, 0, gameWidth, gameHeight);
+  ctx.clearRect(0, 0, gameWidth, gameHeight);
   const deltaTime = currentTime - lastTime;
   lastTime = currentTime;
 
   timeLeft -= deltaTime / 10; // Decrease time by deltaTime in 1/100ths of a second
-  timer.innerText = `${(timeLeft / 100).toFixed(2).replace(".", ":")}s (${wave})`;
+  timer.innerText = `${(13 - timeLeft / 100).toFixed(2).replace(".", ":")}s (${wave})`;
 
   // Draw and move the boxes
   for (let i = 0; i < boxes.length; i++) {
     // Draw box
-    // ctx.strokeStyle = "black";
-    // ctx.rect(
-    //   boxes[i].x - boxes[i].size / 2,
-    //   gameHeight - boxes[i].y - boxes[i].size / 2,
-    //   boxes[i].size,
-    //   boxes[i].size,
-    // );
-    // ctx.stroke();
+    ctx.strokeStyle = "black";
+    ctx.rect(
+      boxes[i].x - boxes[i].size / 2,
+      gameHeight - boxes[i].y - boxes[i].size / 2,
+      boxes[i].size,
+      boxes[i].size,
+    );
+    ctx.stroke();
 
     const box = boxes[i];
 
@@ -286,24 +353,20 @@ export function update(
       box.radiance = Math.min(box.radiance + deltaTime / 2000, 1.0);
     }
     // Bounce off the walls
-    if (box.x - box.size < 0 || box.x + box.size > gameWidth) box.dx *= -1;
-    if (box.y - box.size < 0 || box.y + box.size > gameHeight) box.dy *= -1;
+    if (box.x - box.size / 2 < 0 || box.x + box.size / 2 > gameWidth) box.dx *= -1;
+    if (box.y - box.size / 2 < 0 || box.y + box.size / 2 > gameHeight) box.dy *= -1;
+
+    // Go to the other side of the screen
+    // if (box.x - box.size / 2 > gameWidth) box.x = -box.size / 2;
+    // if (box.x + box.size / 2 < 0) box.x = gameWidth + box.size / 2;
+    // if (box.y - box.size / 2 > gameHeight) box.y = -box.size / 2;
+    // if (box.y + box.size / 2 < 0) box.y = gameHeight + box.size / 2;
 
     // Check for collision with other boxes
-    for (let j = 0; j < boxes.length; j++) {
-      if (i !== j) {
-        const other = boxes[j];
-        if (
-          box.x - box.size / 2 < other.x + other.size / 2 &&
-          box.x + box.size / 2 > other.x - other.size / 2 &&
-          box.y - box.size / 2 < other.y + other.size / 2 &&
-          box.y + box.size / 2 > other.y - other.size / 2
-        ) {
-          box.dx *= -1;
-          box.dy *= -1;
-          other.dx *= -1;
-          other.dy *= -1;
-        }
+    for (let j = i + 1; j < boxes.length; j++) {
+      const other = boxes[j];
+      if (checkCollisionBox(box, other)) {
+        resolveCollision(box, other);
       }
     }
 
@@ -329,11 +392,6 @@ export function update(
       }
 
       respawnBox(box, gameWidth, gameHeight);
-      box.x = Math.random() * gameWidth;
-      box.y = Math.random() * gameHeight;
-      box.value = Math.floor(Math.random() * 13) + 1;
-      box.dx = (Math.random() - 0.5) * (box.value === 13 ? 8 : 4);
-      box.dy = (Math.random() - 0.5) * (box.value === 13 ? 8 : 4);
     }
   }
 
@@ -359,12 +417,17 @@ export function update(
       wave++;
       avoid13 = !avoid13; // Toggle the avoid/hunt rule
       timeLeft = 1300; // Reset time to 13 seconds
+      shouldlevelRestart(true);
       initBoxes(gameWidth, gameHeight); // Respawn the boxes
     }
   } else {
     playSound(0);
     gameoverEl.style.display = "block";
-    const highscore = storeHighScore(score, wave * 1300 + Math.floor(timeLeft / 100));
+
+    const highscore = storeHighScore({
+      score,
+      time: wave * 13 + timeLeft / 100,
+    });
     displayHighScores(highscore);
     gameStarted = false;
 
@@ -377,8 +440,8 @@ export function update(
 function respawnBox(box: Box, gameWidth: number, gameHeight: number) {
   // Randomly choose a side to spawn the box (0 = left, 1 = right, 2 = top, 3 = bottom)
   const side = Math.floor(Math.random() * 4);
-  console.log("Respawning");
   box.collision = false;
+
   if (side === 0) {
     // Spawn to the left
     box.x = -box.size;

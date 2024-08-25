@@ -5,7 +5,7 @@ uniform sampler2D iChannel0;  // Input from Common
 uniform sampler2D iChannel1;  // Input from text atlas
 uniform vec2 resolution;
 uniform vec4 iMouse;
-uniform vec2 iMouseMove;
+uniform vec3 iMouseMove;
 out vec4 fragColor;
 uniform float iTime; 
 uniform float u_super;
@@ -53,79 +53,12 @@ float sdSquare(vec2 p, vec2 center, vec2 size) {
     return max(d.x, d.y);
 }
     
-// float sdThree(vec2 p) {
-//     // Parameters for the top circle
-//     vec2 topCircleCenter = vec2(200.0, 300.0);  // Center of top circle in pixels
-//     float topCircleRadius = 50.0;               // Radius of top circle in pixels
-    
-//     // Parameters for the bottom circle
-//     vec2 bottomCircleCenter = vec2(200.0, 400.0);  // Center of bottom circle in pixels
-//     float bottomCircleRadius = 50.0;               // Radius of bottom circle in pixels
-    
-//     // Square to cut off the left half
-//     vec2 squareCenter = vec2(150.0, 350.0);   // Center of the cutting square
-//     vec2 squareSize = vec2(50.0, 150.0);      // Size of the cutting square
-    
-//     // SDFs for the circles
-//     float topCircleSDF = sdCircle(p, topCircleCenter, topCircleRadius);
-//     float bottomCircleSDF = sdCircle(p, bottomCircleCenter, bottomCircleRadius);
-    
-//     // SDF for the cutting square
-//     float squareSDF = sdSquare(p, squareCenter, squareSize);
-    
-//     // Cut the circles using the square SDF
-//     topCircleSDF = max(topCircleSDF, -squareSDF);
-//     bottomCircleSDF = max(bottomCircleSDF, -squareSDF);
-    
-//     // Combine the SDFs for the top and bottom parts of the "3"
-//     return min(topCircleSDF, bottomCircleSDF);
-// }
-
-
-// float sdThirteen(vec2 p) {
-//     // Offset positions for "1" and "3"
-//     vec2 onePos = p + vec2(-0.6, 0.0);
-//     vec2 threePos = p + vec2(0.6, 0.0);
-    
-//     // Compute the SDFs for "1" and "3"
-//     float oneSDF = sdOne(onePos);
-//     float threeSDF = sdThree(threePos);
-    
-//     // Combine the SDFs
-//     return min(oneSDF, threeSDF);
-// }
-
 float sdCapsuleFixed(vec2 p, vec2 pos, float len, float rot, float r) {
   vec2 ba = vec2(sin(rot), cos(rot)) * len; // default orientation is vertical
   vec2 pa = p - pos + ba; // top center
 
   float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
   return length(pa - ba * h) - r;
-}
-
-// Main SDF function for the stickman
-
-float sdStickman(vec2 p, vec2 pos, float headLen, float rot) {
-    // Head - top capsule, serves as the parent for other parts
-    float head = sdCapsuleFixed(p, pos, headLen, rot, 5.0);
-
-    // Body - positioned just below the head
-    float bodyLen = headLen * 4.5; // example ratio
-    vec2 bodyPos = pos - vec2(0, headLen + 30.0); // adjust for half lengths of head and body
-    float body = sdCapsuleFixed(p, bodyPos, bodyLen, rot, 5.0);
-
-    // Legs - we'll assume they split at the bottom of the body
-    float legLength = bodyLen * 0.75;
-    float leg1 = sdCapsuleFixed(p, bodyPos - vec2(0.1 * bodyLen, 90.0), legLength, rot + 0.5, 5.0); // Slight angle
-    float leg2 = sdCapsuleFixed(p, bodyPos - vec2(-0.1 * bodyLen, 90.0), legLength, rot - 0.5, 5.0); // Slight angle
-
-    // Arms - positioned towards the middle of the body
-    float armLength = bodyLen * 0.75;
-    float arm1 = sdCapsuleFixed(p, bodyPos + vec2(0.2 * bodyLen, 0.0 * bodyLen), armLength, rot - 0.4, 5.0); // Slight angle
-    float arm2 = sdCapsuleFixed(p, bodyPos + vec2(-0.2 * bodyLen, 0.0 * bodyLen), armLength, rot + 0.4, 5.0); // Slight angle
-
-    // Combine all distances using the min function
-    return min(min(min(head, body), min(leg1, leg2)), min(arm1, arm2));
 }
 
 // Function to rotate a point around the origin
@@ -192,11 +125,8 @@ float digit1(vec2 p, float scale) {
 float digit2(vec2 p, float scale) {
     // draw border with size of 1
 //   float scale = 100.0;
-  float d = sdCapsuleFixed(p, vec2(0.3, 0.5) * scale, 0.6 * scale, PI/2.0, 0.4 * scale);
-  // d = min(d, sdCapsuleFixed(p, vec2(0.1, 0.0), 0.03, PI/4.0));
-//   d = min(d, sdCapsuleFixed(p, vec2(-0.0, -0.3) * scale, 0.4 * scale, PI/2.0, 0.1 * scale));
-  // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.63), 0.02, PI/2.0));
-  d = min(d, sdCapsuleFixed(p, vec2(0.3, -0.5) * scale, 0.6 * scale, PI/2.0, 0.4 * scale));
+  float d = sdCapsuleFixed(p, vec2(0.3, 0.5) * scale, 0.6 * scale, PI/2.0, 0.3 * scale);
+  d = min(d, sdCapsuleFixed(p, vec2(0.3, -0.5) * scale, 0.6 * scale, PI/2.0, 0.3 * scale));
 
   return d;
 }
@@ -213,9 +143,9 @@ float digit3(vec2 p, float scale) {
 }
 
 float digit4(vec2 p, float scale) {
-  float d = sdCapsuleFixed(p, vec2(0.6, -0.05) * scale, 1.2 * scale, PI/2.0, 0.3 * scale);
-  d = min(d, sdCapsuleFixed(p, vec2(-0.4, 0.6) * scale, 0.6 * scale, PI/8.0, 0.3 * scale));
-  d = min(d, sdCapsuleFixed(p, vec2(0.2, -0.2) * scale, 0.4 * scale, 0.0, 0.3 * scale));
+  float d = sdCapsuleFixed(p, vec2(0.6, -0.05) * scale, 1.2 * scale, PI/2.0, 0.2 * scale);
+  d = min(d, sdCapsuleFixed(p, vec2(-0.4, 0.6) * scale, 0.6 * scale, PI/8.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.2, -0.2) * scale, 0.4 * scale, 0.0, 0.2 * scale));
   // d = min(d, sdCapsuleFixed(p, vec2(0.4, -0.9), 0.8, PI/2.0));
   return d;
 }
@@ -231,18 +161,17 @@ float digit5(vec2 p, float scale) {
 }
 
 float digit6(vec2 p, float scale) {
-  float d = sdCapsuleFixed(p, vec2(0.6, 0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale);
-  d = min(d, sdCapsuleFixed(p, vec2(-0.5, 0.5) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  float d = sdCapsuleFixed(p, vec2(-0.5, 0.5) * scale, 0.9 * scale, 0.0, 0.2 * scale);
   d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.1) * scale, 0.4 * scale, 0.0, 0.2 * scale));
-  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.0) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
-  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
-  d = min(d, sdCapsuleFixed(p, vec2(-0.5, -0.1) * scale, 0.4 * scale, 0.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.0) * scale, 0.3 * scale, PI/2.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale)); // lower horizontal
+  d = min(d, sdCapsuleFixed(p, vec2(-0.5, -0.1) * scale, 0.4 * scale, 0.0, 0.2 * scale)); // vertical lower
   return d;
 }
 
 float digit7(vec2 p, float scale) {
-  float d = sdCapsuleFixed(p, vec2(0.6, 0.6) * scale, 1.1 * scale, PI/2.0, 0.3 * scale);
-  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.5) * scale, 1.3 * scale, PI/6.0, 0.3 * scale));
+  float d = sdCapsuleFixed(p, vec2(0.6, 0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale);
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.5) * scale, 1.3 * scale, PI/6.0, 0.2 * scale));
   return d;
 }
 
@@ -265,30 +194,31 @@ float digit9(vec2 p, float scale) {
 
 // 10 is two capsules at an angle, to form a roman X
 float digit10(vec2 p, float scale) {
-    float d = sdCapsuleFixed(p, vec2(0.55, 0.55) * scale, 1.6 * scale, PI/4.0, 0.3 * scale);
-    d = min(d, sdCapsuleFixed(p, vec2(-0.55, 0.55) * scale, 1.6 * scale, -PI/4.0, 0.3 * scale));
+    float d = sdCapsuleFixed(p, vec2(0.55, 0.55) * scale, 1.6 * scale, PI/4.0, 0.2 * scale);
+    d = min(d, sdCapsuleFixed(p, vec2(-0.55, 0.55) * scale, 1.6 * scale, -PI/4.0, 0.2 * scale));
     return d;
 }
 
 float digit11(vec2 p, float scale) {
-    float d = sdCapsuleFixed(p, vec2(0.40, 0.65) * scale, 1.3 * scale, 0.0, 0.3 * scale);
-    d = min(d, sdCapsuleFixed(p, vec2(-0.40, 0.65) * scale, 1.3 * scale, 0.0, 0.3 * scale));
+    float d = digit1(p, scale);
+    p = vec2(p.x - 0.8 * scale, p.y);
+    d = min(d, digit1(p, scale));
     return d;
 }
 
 float digit12(vec2 p, float scale) {
-    float d = sdCapsuleFixed(p, vec2(0.70, 0.40) * scale, 0.6 * scale, PI/2.0, 0.3 * scale);
-    d = min(d, sdCapsuleFixed(p, vec2(-0.60, 0.65) * scale, 1.3 * scale, 0.0, 0.3 * scale));
-    d = min(d, sdCapsuleFixed(p, vec2(0.70, -0.4) * scale, 0.6 * scale, PI/2.0, 0.3 * scale));
+    float d = sdCapsuleFixed(p, vec2(0.70, 0.40) * scale, 0.6 * scale, PI/2.0, 0.2 * scale);
+    d = min(d, sdCapsuleFixed(p, vec2(-0.60, 0.65) * scale, 1.3 * scale, 0.0, 0.2 * scale));
+    d = min(d, sdCapsuleFixed(p, vec2(0.70, -0.4) * scale, 0.6 * scale, PI/2.0, 0.2 * scale));
     return d;
 }
 
 float digit13(vec2 p, float scale) {
-    float d = sdCapsuleFixed(p, vec2(0.70, 0.70) * scale, 0.6 * scale, 1.3, 0.25 * scale);
+    float d = sdCapsuleFixed(p, vec2(0.70, 0.70) * scale, 0.6 * scale, 1.9, 0.25 * scale);
     d = min(d, sdCapsuleFixed(p, vec2(-0.60, 0.75) * scale, 1.5 * scale, 0.0, 0.2 * scale));
     d = min(d, sdCapsuleFixed(p, vec2(0.70, 0.5) * scale, 0.6 * scale, 0.4, 0.2 * scale));
     d = min(d, sdCapsuleFixed(p, vec2(0.45, -0.10) * scale, 0.6 * scale, -0.5, 0.2 * scale));
-    d = min(d, sdCapsuleFixed(p, vec2(0.7, -0.7) * scale, 0.6 * scale, PI/2.0 + 0.1, 0.20 * scale));
+    d = min(d, sdCapsuleFixed(p, vec2(0.7, -0.7) * scale, 0.6 * scale, PI/2.0 - 0.3, 0.20 * scale));
     return d;
 }
 
@@ -331,7 +261,7 @@ for (int i = 0; i < 13; i++) {
     float value = u_boxes[i][0].w;
     float radiance = u_boxes[i][1].w;
     // color is in the 7, 8 and 9th index of the u_boxes mat4
-    vec3 color = u_boxes[i][2].xyz / 255.0 * radiance;
+    vec3 color = u_boxes[i][2].xyz / 255.0 * radiance * (0.75 + 0.25 * sin(float(i) + time * 2.0));
 
 
     // vec2 translatedUV = tuv;
@@ -449,7 +379,7 @@ if (iMouse.z > 0.0 && u_super > 0.0 && u_superAvailable > 0.0) {
 } else if (iMouse.w > 0.0) {
     circleColor = vec3(0.0, 0.0, 0.0); // White color if mouse is clicked
 } else {
-    circleColor = vec3(0.0, 0.0, 0.0); // Default blue color
+    circleColor = vec3(iMouseMove.z); // Default blue color
 }
 // circleColor = vec3(
 //     0.5 + 0.5 * sin(time * 2.0),
@@ -483,7 +413,7 @@ if(u_gameStarted < 0.5) {
     float d1 = digit1(p - middle - vec2(-75.0,0.0), 100.0);
     float d2 = digit3(p - middle - vec2(75.0,0.0), 100.0);
 
-    float d3 = sdCapsuleFixed(rotate(p - middle - vec2(-200.0,sin(iTime+PI)*30.0), PI/2.0), vec2(0.0,-22.5), 45.0, PI, 10.0);
+    float d3 = sdCapsuleFixed(rotate(p - middle - vec2(-200.0,sin(iTime+PI)*30.0), PI/2.0), vec2(0.0,-22.5), 45.0, PI, 7.0);
     float d4 = digit10(rotate(p - middle - vec2(-200.0,sin(iTime)*30.0), PI/4.0), 30.0);
 
     float d = min(d1, min(d2, min(d3, d4)));

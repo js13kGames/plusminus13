@@ -2,7 +2,6 @@ import bufferBShaderSrc from "./shaders/bufferB.fragment.glsl";
 import cubeAShaderSrc from "./shaders/cubeMap.fragment.glsl";
 import imageShaderSrc from "./shaders/image.fragment.glsl";
 import geometricsdffont from "./shaders/geometricsdffont.fragment.glsl";
-import slerpy from "./slerp";
 import {
   boxes,
   initBoxes,
@@ -11,9 +10,12 @@ import {
   superModeAvailable,
   gameStarted,
   startGame,
+  needsLevelRestart,
+  shouldlevelRestart,
 } from "./gamestate";
-import Music from "./music";
+import Music from "./music2";
 import { playRandomSound } from "./sound";
+import { storeHighScore } from "./highscore";
 
 const canvas = <HTMLCanvasElement>document.getElementById("glcanvas");
 if (!canvas) {
@@ -103,11 +105,13 @@ let lateralGForce = 0.0;
 const forwardGForce = 0.0;
 let visualRotation = 0.0;
 const visualRotationSpeed = 0.1;
-let maxBackwardSpeed = -2;
+let maxBackwardSpeed = -5;
+let illumination = 0.0;
 
 let musicStarted = 0;
 
 const start = () => {
+  // storeHighScore(100, 110);
   startGame();
   document.querySelector("#start")?.setAttribute("style", "display: none");
   document.getElementById("game-ui")?.setAttribute("style", "display: flex");
@@ -156,19 +160,17 @@ window.addEventListener("keyup", (event) => {
 });
 
 function updateMovement() {
-  // console.log(moveAngle, lateralGForce, visualRotation);
   if (keyState.Space) {
     if (true) {
-      console.log("superMode");
       // superMode = 1;
       maxSpeed = 10.0;
       moveAccel = 0.3;
-      maxBackwardSpeed = -5;
+      maxBackwardSpeed = -10;
       rotationSpeed = 0.07;
     }
   } else {
     // superMode = 0;
-    maxBackwardSpeed = -2;
+    maxBackwardSpeed = -5;
     rotationSpeed = 0.03;
     moveAccel = 0.05;
     maxSpeed = 5.0;
@@ -476,6 +478,18 @@ function render() {
   }
 
   updateMovement();
+
+  // Needs to reset, as indicated by gamestate?
+  if (needsLevelRestart()) {
+    cX = canvas.width / 2;
+    cY = canvas.height / 2;
+    moveAngle = 0;
+    moveSpeed = 0;
+    illumination = 1.0;
+    shouldlevelRestart(false);
+  }
+
+  illumination *= 0.99;
   // Toggle between the two textures
   bufferATextureIndex = 1 - bufferATextureIndex;
   bufferBTextureIndex = 1 - bufferBTextureIndex;
@@ -544,7 +558,7 @@ function render() {
   gl.uniform4f(mouseLocation, cX, cY, keyState.Space ? 1 : 0, 0);
 
   const mouseMoveLocation = gl.getUniformLocation(bufferBProgram, "iMouseMove");
-  gl.uniform2f(mouseMoveLocation, moveAngle + visualRotation, Math.abs(moveSpeed));
+  gl.uniform3f(mouseMoveLocation, moveAngle + visualRotation, Math.abs(moveSpeed), illumination);
 
   const boxesLocation = gl.getUniformLocation(bufferBProgram, "u_boxes");
   // the uniform is: uniform mat4 u_boxes[13]
