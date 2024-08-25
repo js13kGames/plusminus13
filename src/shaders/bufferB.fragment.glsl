@@ -5,7 +5,7 @@ uniform sampler2D iChannel0;  // Input from Common
 uniform sampler2D iChannel1;  // Input from text atlas
 uniform vec2 resolution;
 uniform vec4 iMouse;
-uniform vec3 iMouseMove;
+uniform vec4 iMouseMove;
 out vec4 fragColor;
 uniform float iTime; 
 uniform float u_super;
@@ -71,7 +71,7 @@ vec2 rotate(vec2 p, float angle) {
 // Main SDF function for the stickman, applying hierarchical transformations
 float sdStickman2(vec2 p, vec2 pos, float headLen, float rot, float super, float magnitude) {
     // Rotate and translate point p into head's local coordinate space
-    vec2 localP = rotate(p - pos, rot + 0.01 * cos(20.0*iTime));
+    vec2 localP = rotate(p - pos, rot + 0.005 * cos(10.0*iTime));
     float time = mod(iTime,2.0*PI);
     // Head - no need to translate or rotate further as it is the root
     float head = sdCapsuleFixed(localP, vec2(0,0), headLen, 0.0, 15.0);
@@ -79,17 +79,17 @@ float sdStickman2(vec2 p, vec2 pos, float headLen, float rot, float super, float
     // Body - positioned just below the head
     float bodyLen = headLen * 2.3;
     vec2 bodyPos = vec2(0, -headLen - 30.0); // local relative position
-    float body = sdCapsuleFixed(localP, bodyPos, bodyLen, 0.0, 10.0 + sin(30.0*max(magnitude, 0.1)*time)*0.3);
+    float body = sdCapsuleFixed(localP, bodyPos, bodyLen, 0.0, 10.0 + sin(15.0*max(magnitude, 0.1)*time)*1.5);
 
     // Legs
     float legLength = bodyLen * 0.75;
-    float leg1 = sdCapsuleFixed(localP, bodyPos - vec2(0.13 * bodyLen, 53.0), legLength, 0.5 - 0.3*super + cos(60.0*magnitude*time)*0.1 - min(magnitude*50.0, 0.4), 5.0);
-    float leg2 = sdCapsuleFixed(localP, bodyPos - vec2(-0.13 * bodyLen, 53.0), legLength, -0.5 + 0.3*super - sin(60.0*magnitude*time)*0.1 + min(magnitude*50.0, 0.4), 5.0);
+    float leg1 = sdCapsuleFixed(localP, bodyPos - vec2(0.13 * bodyLen, 53.0), legLength, 0.5 - 0.2*super + cos(30.0*magnitude*time)*0.1 - min(magnitude*50.0, 0.4), 5.0);
+    float leg2 = sdCapsuleFixed(localP, bodyPos - vec2(-0.13 * bodyLen, 53.0), legLength, -0.5 + 0.2*super - sin(30.0*magnitude*time)*0.1 + min(magnitude*50.0, 0.4), 5.0);
 
     // Arms
     float armLength = bodyLen * 0.75;
-    float arm1 = sdCapsuleFixed(localP, bodyPos + vec2(0.2 * bodyLen, 0.0 * bodyLen), armLength, -0.5 - 2.1*super + cos(60.0*magnitude*time)*0.1 + min(magnitude*50.0, 0.2), 5.0);
-    float arm2 = sdCapsuleFixed(localP, bodyPos + vec2(-0.2 * bodyLen, 0.0 * bodyLen), armLength, 0.5 + 2.1*super + sin(60.0*magnitude*time)*0.1 - min(magnitude*50.0, 0.2), 5.0);
+    float arm1 = sdCapsuleFixed(localP, bodyPos + vec2(0.2 * bodyLen, 0.0 * bodyLen), armLength, -0.5 - 2.1*super + cos(30.0*magnitude*time)*0.1 + min(magnitude*50.0, 0.2), 5.0);
+    float arm2 = sdCapsuleFixed(localP, bodyPos + vec2(-0.2 * bodyLen, 0.0 * bodyLen), armLength, 0.5 + 2.1*super + sin(30.0*magnitude*time)*0.1 - min(magnitude*50.0, 0.2), 5.0);
 
     // Combine all distances using the min function
     return min(min(min(head, body), min(leg1, leg2)), min(arm1, arm2));
@@ -134,10 +134,10 @@ float digit2(vec2 p, float scale) {
 // Construct using sdCapsule, like in LED, digit2
 float digit3(vec2 p, float scale) {
 //   float scale = 100.0;
-  float d = sdCapsuleFixed(p, vec2(0.6, 0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale);
+  float d = sdCapsuleFixed(p, vec2(0.6, 0.7) * scale, 1.1 * scale, PI/2.0, 0.2 * scale);
   d = min(d, sdCapsuleFixed(p, vec2(0.6, 0.0) * scale, 0.4 * scale, PI/2.0, 0.2 * scale));
   // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.2) * scale, 0.8, 0.0));
-  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.6) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
+  d = min(d, sdCapsuleFixed(p, vec2(0.6, -0.7) * scale, 1.1 * scale, PI/2.0, 0.2 * scale));
   // d = min(d, sdCapsuleFixed(p, vec2(-0.3, -0.9) * scale, 0.8, 0.0));
   return d;
 }
@@ -213,7 +213,7 @@ float digit12(vec2 p, float scale) {
     return d;
 }
 
-float digit13(vec2 p, float scale) {
+float digit13e(vec2 p, float scale) {
     float d = sdCapsuleFixed(p, vec2(0.70, 0.70) * scale, 0.6 * scale, 1.9, 0.25 * scale);
     d = min(d, sdCapsuleFixed(p, vec2(-0.60, 0.75) * scale, 1.5 * scale, 0.0, 0.2 * scale));
     d = min(d, sdCapsuleFixed(p, vec2(0.70, 0.5) * scale, 0.6 * scale, 0.4, 0.2 * scale));
@@ -221,6 +221,15 @@ float digit13(vec2 p, float scale) {
     d = min(d, sdCapsuleFixed(p, vec2(0.7, -0.7) * scale, 0.6 * scale, PI/2.0 - 0.3, 0.20 * scale));
     return d;
 }
+
+float digit13(vec2 p, float scale) {
+    float d = digit1(p, scale);
+    p = vec2(p.x - 1.2 * scale, p.y);
+    d = min(d, digit3(p, scale));
+    return d;
+}
+
+
 
 
 
@@ -296,7 +305,11 @@ for (int i = 0; i < 13; i++) {
     } else if (value < 12.1) {
         sd = min(sd, digit12(p - center, radius));
     } else if (value < 13.1) {
-        sd = min(sd, digit13(p - center, radius));
+        if(color.g > 0.05) {
+            sd = min(sd, digit13(p - center, radius));
+        } else {
+            sd = min(sd, digit13e(p - center, radius));
+        }
     } else {
         sd = min(sd, sdCircle(p, center, radius));
     }
@@ -364,14 +377,10 @@ float magnitude = iMouseMove.y;
 float rotation = iMouseMove.x;  
 
 float clicked = iMouse.z;
-// If rotation is close to -PI, we want to null it and instead apply 'super' to the arms
-if (rotation < -3.0 || rotation > 3.0) {
-    clicked = 1.0;
-}
 
 // Calculate the SDF of the circle at the mouse position
 // float sd = sdCapsuleFixed(p, mousePos, mouseRadius, rotation * magnitude * 15.0);
-float sd = sdStickman2(p, mousePos, 20.0, rotation, clicked * u_superAvailable, magnitude);
+float sd = sdStickman2(p, mousePos, 20.0, rotation, min(iMouseMove.w + clicked, 1.0), magnitude / 30.0);
 // Determine the circle color based on the mouse state
 vec3 circleColor;
 if (iMouse.z > 0.0 && u_super > 0.0 && u_superAvailable > 0.0) {

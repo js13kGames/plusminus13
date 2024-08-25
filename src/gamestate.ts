@@ -25,7 +25,7 @@ interface Box {
 
 export const boxes: Box[] = [];
 export let superMode = 0;
-export let superModeAvailable = 0;
+export let superModeAvailable = 1;
 export let gameStarted = false;
 let levelRestart = false;
 
@@ -44,9 +44,15 @@ canvasEl.width = window.innerWidth;
 canvasEl.height = window.innerHeight;
 
 export function startGame() {
+  timeLeft = 1300;
+  wave = 1;
+  avoid13 = true;
+  initBoxes(gameWidth, gameHeight);
+  lives = 3;
   gameStarted = true;
   lastTime = performance.now();
-  shouldlevelRestart(true);
+  superMode = 0;
+  // shouldlevelRestart(true);
   //   initBoxes(gameWidth, gameHeight);
   score = 0;
 }
@@ -285,6 +291,12 @@ function initBoxes(width: number, height: number) {
   }
 }
 
+let gamestopCb: () => void;
+const onGameStop = (cb: () => void) => {
+  gamestopCb = cb;
+};
+
+export { onGameStop };
 export { initBoxes };
 
 // Update positions and check for collisions
@@ -383,7 +395,7 @@ export function update(
           superMode += box.value;
           superMode = Math.min(superMode, 100);
         }
-        if (superMode === 100) {
+        if (superMode > 0) {
           superModeAvailable = 1.0;
         }
       } else if ((avoid13 && box.value === 13) || (!avoid13 && box.value !== 13)) {
@@ -398,15 +410,15 @@ export function update(
   // Update score and lives
   scoreEl.innerText = `${score}`;
   // A heart emoji for each life
-  livesEl.innerText = "❤️".repeat(lives);
+  livesEl.innerText = "❤️".repeat(Math.max(0, lives));
   // Update super mode
   if (mouseDown && superModeAvailable) {
-    superMode = Math.max(0, superMode - deltaTime / 20);
+    superMode = Math.max(0, superMode - deltaTime / 50);
     if (superMode === 0) {
       superModeAvailable = 0.0;
     }
   }
-  if (!mouseDown && superMode < 100) {
+  if (!mouseDown && superMode <= 0) {
     superModeAvailable = 0.0;
   }
 
@@ -415,7 +427,7 @@ export function update(
   if (lives > 0) {
     if (timeLeft < 0) {
       wave++;
-      avoid13 = !avoid13; // Toggle the avoid/hunt rule
+      avoid13 = wave % 2 !== 0; // Toggle the avoid/hunt rule
       timeLeft = 1300; // Reset time to 13 seconds
       shouldlevelRestart(true);
       initBoxes(gameWidth, gameHeight); // Respawn the boxes
@@ -428,9 +440,15 @@ export function update(
       score,
       time: wave * 13 + timeLeft / 100,
     });
-    displayHighScores(highscore);
-    gameStarted = false;
 
+    displayHighScores(highscore);
+    // Use the Speech Synthesis API to say the score
+    // const utterance = new SpeechSynthesisUtterance(`You LOSE!`);
+    // speechSynthesis.speak(utterance);
+    gameStarted = false;
+    if (gamestopCb) {
+      gamestopCb();
+    }
     // Respawn all boxes
     initBoxes(gameWidth, gameHeight);
     return false;

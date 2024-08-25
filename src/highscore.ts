@@ -7,6 +7,12 @@ type HighScore = {
   name?: string;
 };
 
+let outsideStartGameFn: () => void;
+
+export const setStartGameFn = (fn: () => void) => {
+  outsideStartGameFn = fn;
+};
+
 const storeHighScore = ({ id, score, time, name }: HighScore) => {
   // Retrieve high scores from local storage
   const highScores = JSON.parse(localStorage.getItem(localStorageName) || "[]");

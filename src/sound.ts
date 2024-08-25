@@ -49,6 +49,11 @@ export function playSound(note: number) {
   const bufferSource = ac.createBufferSource();
 
   bufferSource.buffer = soundBuffers[note];
-  bufferSource.connect(ac.destination);
+  // Make it quieter
+  const gain = ac.createGain();
+  gain.gain.value = 0.5;
+  bufferSource.connect(gain);
+  gain.connect(ac.destination);
+  //   bufferSource.connect(ac.destination);
   bufferSource.start(0);
 }

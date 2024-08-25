@@ -12,10 +12,10 @@ import {
   startGame,
   needsLevelRestart,
   shouldlevelRestart,
+  onGameStop,
 } from "./gamestate";
 import Music from "./music2";
-import { playRandomSound } from "./sound";
-import { storeHighScore } from "./highscore";
+import { playRandomSound, playSound } from "./sound";
 
 const canvas = <HTMLCanvasElement>document.getElementById("glcanvas");
 if (!canvas) {
@@ -95,34 +95,50 @@ let cX = canvas.width / 2;
 let cY = canvas.height / 2 + 300;
 let moveAngle = 0;
 let moveSpeed = 0.0;
+let speedX = 0.0;
+let speedY = 0.0;
 let moveAccel = 0.05;
 let maxSpeed = 5.0;
 const friction = 0.99;
-let rotationSpeed = 0.03;
-let previousSpeedX = 0.0;
-let previousSpeedY = 0.0;
-let lateralGForce = 0.0;
+const rotationSpeed = 0.03;
+const previousSpeedX = 0.0;
+const previousSpeedY = 0.0;
+const lateralGForce = 0.0;
 const forwardGForce = 0.0;
-let visualRotation = 0.0;
+const visualRotation = 0.0;
 const visualRotationSpeed = 0.1;
 let maxBackwardSpeed = -5;
 let illumination = 0.0;
-
+let angleLimited = 0;
 let musicStarted = 0;
 
+let music: Music;
 const start = () => {
-  // storeHighScore(100, 110);
   startGame();
   document.querySelector("#start")?.setAttribute("style", "display: none");
   document.getElementById("game-ui")?.setAttribute("style", "display: flex");
+  document.getElementById("over")?.setAttribute("style", "display: none");
   if (!musicStarted) {
-    new Music().start();
+    music = new Music();
+    music.start();
     musicStarted = 1;
   }
-  playRandomSound();
+  playSound(0);
 };
 
-document.querySelector("#start button")?.addEventListener("click", start);
+onGameStop(() => {
+  if (musicStarted) {
+    music.stop();
+    musicStarted = 0;
+  }
+  document.getElementById("restart")?.addEventListener("click", () => {
+    start();
+  });
+});
+
+document.querySelector("#start button")?.addEventListener("click", () => {
+  start();
+});
 
 // canvas.addEventListener("mousedown", (event) => {
 //   // mouseDown = 1;
@@ -151,7 +167,7 @@ window.addEventListener("keydown", (event) => {
 
   // Start game if Return key is pressed
   if (event.code === "Enter" && !gameStarted) {
-    startGame();
+    start();
   }
 });
 
@@ -159,72 +175,81 @@ window.addEventListener("keyup", (event) => {
   keyState[event.code] = false;
 });
 
-function updateMovement() {
-  if (keyState.Space) {
-    if (true) {
-      // superMode = 1;
-      maxSpeed = 10.0;
-      moveAccel = 0.3;
-      maxBackwardSpeed = -10;
-      rotationSpeed = 0.07;
-    }
+function calculateInertiaDeflectionAngle(ax: number, ay: number) {
+  // Calculate the angle of deflection based on the acceleration vector
+  let angle = Math.atan2(ax, ay);
+
+  // Convert the angle to a range of -PI to PI non-linearly
+  if (Math.abs(angle) > Math.PI / 1.1) {
+    angle = 0;
+    angleLimited = Math.min(angleLimited + 0.1, 1);
   } else {
-    // superMode = 0;
-    maxBackwardSpeed = -5;
-    rotationSpeed = 0.03;
-    moveAccel = 0.05;
+    angleLimited = Math.max(angleLimited - 0.1, 0);
+  }
+
+  angle = angle / 1.8;
+
+  // Smooth the angle change
+  const angleDiff = angle - moveAngle;
+  // if (angleDiff > Math.PI) {
+  //   moveAngle += Math.PI * 2;
+  // } else if (angleDiff < -Math.PI) {
+  //   moveAngle -= Math.PI * 2;
+  // }
+  moveAngle += angleDiff * 0.1;
+  return moveAngle;
+  // return angle;
+}
+
+function updateMovement2() {
+  // Set acceleration and speed limits based on "super mode"
+  if (keyState.Space) {
+    maxSpeed = 10.0;
+    moveAccel = 0.6;
+    maxBackwardSpeed = -10;
+  } else {
     maxSpeed = 5.0;
+    moveAccel = 0.3;
+    maxBackwardSpeed = -5;
+  }
+  let targetDx = 0;
+  let targetDy = 0;
+
+  const friction = 0.96; // Friction factor (0-1)
+
+  // Determine target movement direction based on key presses
+  if (keyState.ArrowUp) targetDy += 1;
+  if (keyState.ArrowDown) targetDy -= 1;
+  if (keyState.ArrowLeft) targetDx -= 1;
+  if (keyState.ArrowRight) targetDx += 1;
+
+  // Normalize diagonal movement
+  if (targetDx !== 0 && targetDy !== 0) {
+    const magnitude = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
+    targetDx /= magnitude;
+    targetDy /= magnitude;
   }
 
-  // Acceleration and speed control
-  if (keyState.ArrowUp) {
-    moveSpeed += moveAccel;
-    if (moveSpeed > maxSpeed) {
-      // Reduce speed until max speed is reached
-      moveSpeed -= moveAccel;
-    }
-  }
-  if (keyState.ArrowDown) {
-    moveSpeed -= moveAccel;
-    if (moveSpeed < maxBackwardSpeed) {
-      // Reduce speed until max speed is reached
-      moveSpeed += moveAccel;
-    }
-  }
-
-  // Rotation, which should be dependent on speed
-  if (keyState.ArrowLeft) {
-    moveAngle -= rotationSpeed * (Math.abs(moveSpeed) / maxSpeed);
-  }
-  if (keyState.ArrowRight) {
-    moveAngle += rotationSpeed * (Math.abs(moveSpeed) / maxSpeed);
-  }
+  moveAngle = calculateInertiaDeflectionAngle(targetDx * moveAccel, targetDy * moveAccel);
+  // Apply acceleration towards the target direction
+  speedX += targetDx * moveAccel;
+  speedY += targetDy * moveAccel;
 
   // Apply friction
-  moveSpeed *= friction;
+  speedX *= friction;
+  speedY *= friction;
+
+  // Limit speed to maxSpeed
+  const currentSpeed = Math.sqrt(speedX * speedX + speedY * speedY);
+  if (currentSpeed > maxSpeed) {
+    const scaleFactor = maxSpeed / currentSpeed;
+    speedX *= scaleFactor;
+    speedY *= scaleFactor;
+  }
 
   // Update position
-  const newSpeedX = Math.cos(moveAngle - Math.PI / 2) * moveSpeed;
-  const newSpeedY = Math.sin(moveAngle - Math.PI / 2) * moveSpeed;
-
-  cX += newSpeedX;
-  cY -= newSpeedY;
-
-  // Calculate the lateral G-force acting on the car (based on change in direction)
-  const deltaX = newSpeedX - previousSpeedX;
-  const deltaY = newSpeedY - previousSpeedY;
-
-  // Calculate the side-to-side (lateral) G force (perpendicular to the car's rotation)
-  lateralGForce = (deltaX * Math.cos(moveAngle) + deltaY * Math.sin(moveAngle)) * 3.0;
-
-  // Visual rotation should gradually increase towards the lateral G force
-  visualRotation += (lateralGForce - visualRotation) * visualRotationSpeed;
-
-  // forwardGForce = deltaY * Math.sin(moveAngle) - deltaX * Math.cos(moveAngle);
-
-  // Save the current speed components for the next frame
-  previousSpeedX = newSpeedX;
-  previousSpeedY = newSpeedY;
+  cX += speedX;
+  cY += speedY;
 
   // Screen wrapping
   if (cX > canvas.width) cX = 0;
@@ -477,7 +502,7 @@ function render() {
     document.getElementById("fps")!.innerText = fps.toFixed(2);
   }
 
-  updateMovement();
+  updateMovement2();
 
   // Needs to reset, as indicated by gamestate?
   if (needsLevelRestart()) {
@@ -486,10 +511,13 @@ function render() {
     moveAngle = 0;
     moveSpeed = 0;
     illumination = 1.0;
+    // music.stop();
+    music.setNextTempo();
+    // music.start();
     shouldlevelRestart(false);
   }
 
-  illumination *= 0.99;
+  illumination *= 0.96;
   // Toggle between the two textures
   bufferATextureIndex = 1 - bufferATextureIndex;
   bufferBTextureIndex = 1 - bufferBTextureIndex;
@@ -558,7 +586,8 @@ function render() {
   gl.uniform4f(mouseLocation, cX, cY, keyState.Space ? 1 : 0, 0);
 
   const mouseMoveLocation = gl.getUniformLocation(bufferBProgram, "iMouseMove");
-  gl.uniform3f(mouseMoveLocation, moveAngle + visualRotation, Math.abs(moveSpeed), illumination);
+  const speed = Math.sqrt(speedX * speedX + speedY * speedY);
+  gl.uniform4f(mouseMoveLocation, moveAngle, speed, illumination, angleLimited);
 
   const boxesLocation = gl.getUniformLocation(bufferBProgram, "u_boxes");
   // the uniform is: uniform mat4 u_boxes[13]
