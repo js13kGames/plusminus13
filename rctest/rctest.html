@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<!-- saved from url=(0022)https://jason.today/rc -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Building Real-Time Global Illumination: Radiance Cascades</title>
+        
+        <script src="./three.min.js"></script>
+
+      </head>
+      <body>
+        
+      <script data-run-id="d552cb71-c166-4849-91ae-29c207080107">
+
+
+const vertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})?$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16),
+    a: result[4] ? parseInt(result[4], 16) : 255,
+  } : null;
+}
+
+function rgbToHex(r, g, b, a) {
+  if (a !== undefined) {
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1) +
+      Math.round(a * 255).toString(16).padStart(2, '0');
+  }
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+// This is the html plumbing / structure / controls for little canvases
+function intializeCanvas({
+ id, canvas, onSetColor, startDrawing, onMouseMove, stopDrawing, clear, reset, toggleSun, colors = [
+    "#fff6d3", "#f9a875", "#eb6b6f", "#7c3f58", "#03C4A1", "#3d9efc", "#000000", "#00000000"
+  ]
+}) {
+
+  const thisId = document.querySelector(`#${id}`);
+  thisId.innerHTML = `
+    <div style="display: flex; gap: 20px;">
+    <div id="${id}-canvas-container"></div>
+
+    <div style="display: flex; flex-direction: column; justify-content: space-between;">
+        <div id="${id}-color-picker" style="display: flex; flex-direction: column;  border: solid 1px white; margin: 1px;">
+          <input type="color" id="${id}-color-input" value="#eb6b6f" style="display: none; width: 0px" >
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px">
+
+      </div>
+    </div>
+</div>`;
+  const colorInput = document.getElementById(`${id}-color-input`);
+
+  function setColor(r, g, b, a) {
+    colorInput.value = rgbToHex(r, g, b, a);
+    onSetColor({r, g, b, a});
+  }
+
+  function setHex(hex) {
+    const rgb = hexToRgb(hex);
+    setColor(rgb.r, rgb.g, rgb.b, rgb.a);
+    const stringifiedColor = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+    thisId.querySelectorAll(".arrow").forEach((node) => {
+      if (rgb.a === 0) {
+        if (node.parentNode.style.backgroundColor === "var(--pre-background)") {
+          node.className = "arrow";
+        } else {
+          node.className = "arrow hidden";
+        }
+      } else if (node.parentNode.style.backgroundColor === stringifiedColor) {
+        node.className = "arrow";
+      } else {
+        node.className = "arrow hidden";
+      }
+    });
+  }
+
+  function updateColor(event) {
+    const hex = event.target.value;
+    setHex(hex);
+  }
+
+  const container = document.querySelector(`#${id}-canvas-container`);
+  container.appendChild(canvas);
+
+  canvas.addEventListener('mousedown', startDrawing);
+
+  return {container, setHex};
+}
+
+</script><script data-run-id="08dbe5ae-4967-4b49-b462-2a2f105b0a7b">
+// Let's instrument the post with this so we can disable animations while editing.
+const disableAnimation = false;
+// Draw animations very fast, with a huge loss in accuracy (for testing)
+const instantMode = false;
+const getFrame = disableAnimation
+  ? (fn) => { fn() }
+  : requestAnimationFrame;
+</script><script data-run-id="4be1c591-3c73-47e1-bc92-bc855ff57bcb">
+// @run
+class PaintableCanvas {
+  constructor({width, height, initialColor = 'transparent', radius = 6, friction = 0.1}) {
+
+    this.isDrawing = false;
+    this.currentMousePosition = { x: 0, y: 0 };
+    this.lastPoint = { x: 0, y: 0 };
+    this.currentPoint = { x: 0, y: 0 };
+
+    this.mouseMoved = false;
+    this.currentColor = {r: 255, g: 255, b: 255, a: 255};
+    this.RADIUS = radius;
+    this.FRICTION = friction;
+    this.width = width;
+    this.height = height;
+
+    this.initialColor = initialColor;
+
+    this.onUpdateTextures = () => {
+    };
+
+    this.drawSmoothLine = (from, to) => {
+      throw new Error("Missing implementation");
+    }
+  }
+
+
+  // Mobile breaks in all kinds of ways
+  // Drawing on cpu fixes most of the issues
+  drawSmoothLineFallback(from, to) {
+    this.drawLine(from, to, this.currentColor, this.context);
+    this.updateTexture();
+  }
+
+  createCanvas(width, height, initialColor) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    context.fillStyle = initialColor;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    // canvas.style.width = `${width / 2}px`;
+    // canvas.style.height = `${height / 2}px`;
+    return [canvas, context];
+  }
+
+  setupTexture(texture) {
+    texture.minFilter = THREE.NearestFilter;
+    texture.magFilter = THREE.NearestFilter;
+    texture.format = THREE.RGBAFormat;
+    texture.type = true ? THREE.HalfFloatType : THREE.FloatType;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping
+    texture.generateMipmaps = true;
+  }
+
+  updateTexture() {
+    this.texture.needsUpdate = true;
+    this.onUpdateTextures();
+  }
+
+  startDrawing(e) {
+    this.isDrawing = true;
+    this.doDraw();
+  }
+
+  stopDrawing(e, redraw) {
+    const wasDrawing = this.isDrawing;
+    if (!wasDrawing) {
+      return false;
+    }
+    this.isDrawing = false;
+    return true;
+  }
+
+  doDraw() {
+    const newPoint = this.currentMousePosition;
+
+    // Some smoothing...
+    let dist = this.distance(this.currentPoint, newPoint);
+
+    if (dist > 0) {
+      let dir = {
+        x: (newPoint.x - this.currentPoint.x) / dist,
+        y: (newPoint.y - this.currentPoint.y) / dist
+      };
+      let len = Math.max(dist - this.RADIUS, 0);
+      let ease = 1 - Math.pow(this.FRICTION, 1 / 60 * 10);
+      this.currentPoint = {
+        x: this.currentPoint.x + dir.x * len * ease,
+        y: this.currentPoint.y + dir.y * len * ease
+      };
+    } else {
+      this.currentPoint = newPoint;
+    }
+
+    this.drawSmoothLine(this.lastPoint, this.currentPoint);
+    this.lastPoint = this.currentPoint;
+  }
+
+  // I'll be honest - not sure why I can't just use `clientX` and `clientY`
+  // Must have made a weird mistake somewhere.
+
+
+  distance(p1, p2) {
+    return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+  }
+
+  setColor(r, g, b, a) {
+    this.currentColor = {r, g, b, a};
+  }
+
+  clear() {
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.currentImageData = new ImageData(this.canvas.width, this.canvas.height);
+    this.updateTexture();
+  }
+}
+
+function threeJSInit(width, height, materialProperties, renderer = null, renderTargetOverrides = {}, makeRenderTargets = undefined, extra = {}) {
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const dpr = extra.dpr || window.devicePixelRatio || 1;
+
+  if (!renderer) {
+    renderer = new THREE.WebGLRenderer({
+      antialiasing: false,
+      powerPreference: "high-performance"
+      // powerPreference: "low-power",
+    });
+    renderer.setPixelRatio(dpr);
+  }
+  renderer.setSize(width, height);
+  const renderTargetProps = {
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    type: !document.querySelector("#full-precision")?.checked ? THREE.HalfFloatType : THREE.FloatType,
+    format: THREE.RGBAFormat,
+    wrapS: THREE.ClampToEdgeWrapping,
+    wrapT: THREE.ClampToEdgeWrapping,
+    ...renderTargetOverrides,
+  };
+
+  const geometry = new THREE.PlaneGeometry(2, 2);
+  const material = new THREE.ShaderMaterial({
+    depthTest: false,
+    depthWrite: false,
+    glslVersion: THREE.GLSL3,
+    ...materialProperties,
+  });
+  plane = new THREE.Mesh(geometry, material);
+  scene.add(plane);
+
+  return {
+    plane,
+    canvas: renderer.domElement,
+    render: () => {
+      renderer.render(scene, camera)
+    },
+    renderTargets: makeRenderTargets ? makeRenderTargets(
+      { width, height, renderer, renderTargetProps}
+    ) : (() => {
+      const renderTargetA = new THREE.WebGLRenderTarget(extra?.width ?? width, extra?.height ?? height, renderTargetProps);
+      const renderTargetB = renderTargetA.clone();
+      return [renderTargetA, renderTargetB];
+    })(),
+    renderer
+  }
+}
+
+class BaseSurface {
+  constructor({ id, width, height, radius = 5, dpr = 1 }) {
+    // Create PaintableCanvas instances
+    this.createSurface(width, height, radius);
+    this.dpr = dpr || window.devicePixelRatio || 1;
+    this.width = width;
+    this.height = height;
+    this.id = id;
+    this.initialized = false;
+    this.initialize();
+  }
+
+  createSurface(width, height, radius) {
+    this.surface = new PaintableCanvas({ width, height, radius });
+  }
+
+  initialize() {
+    // Child class should fill this out
+  }
+
+  load() {
+    // Child class should fill this out
+  }
+
+  clear() {
+    // Child class should fill this out
+  }
+
+  renderPass() {
+    // Child class should fill this out
+  }
+
+  reset() {
+    this.clear();
+    this.setHex("#fff6d3");
+  }
+
+
+  buildCanvas() {
+    return intializeCanvas({
+      id: this.id,
+      canvas: this.canvas,
+      onSetColor: ({r, g, b, a}) => {
+        this.surface.currentColor = {r, g, b, a};
+        this.plane.material.uniforms.color.value = new THREE.Vector4(
+          this.surface.currentColor.r / 255.0,
+          this.surface.currentColor.g / 255.0,
+          this.surface.currentColor.b / 255.0,
+          this.surface.currentColor.a != null
+              ? this.surface.currentColor.a / 255.0
+            : 1.0,
+        );
+      },
+      startDrawing: (e) => this.surface.startDrawing(e),
+      onMouseMove: (e) => this.surface.onMouseMove(e),
+      stopDrawing: (e, redraw) => this.surface.stopDrawing(e, redraw),
+      clear: () => this.clear(),
+      reset: () => this.reset(),
+      ...this.canvasModifications()
+    });
+  }
+
+  canvasModifications() {
+    return {}
+  }
+
+
+  initThreeJS({ uniforms, fragmentShader, renderTargetOverrides, makeRenderTargets, ...rest }) {
+    return threeJSInit(this.width, this.height, {
+      uniforms,
+      fragmentShader,
+      vertexShader,
+      transparent: false,
+    }, this.renderer, renderTargetOverrides ?? {}, makeRenderTargets, rest)
+  }
+}
+
+class Drawing extends BaseSurface {
+  initializeSmoothSurface() {
+    const props = this.initThreeJS({
+      uniforms: {
+        inputTexture: { value: this.surface.texture },
+        color: {value: new THREE.Vector4(1, 1, 1, 1)},
+        from: {value: new THREE.Vector2(0, 0)},
+        to: {value: new THREE.Vector2(0, 0)},
+        radiusSquared: {value: Math.pow(this.surface.RADIUS, 2.0)},
+        resolution: {value: new THREE.Vector2(this.width, this.height)},
+        drawing: { value: false },
+        indicator: { value: false },
+      },
+      fragmentShader: `
+uniform sampler2D inputTexture;
+uniform vec4 color;
+uniform vec2 from;
+uniform vec2 to;
+uniform float radiusSquared;
+uniform vec2 resolution;
+uniform bool drawing;
+uniform bool indicator;
+varying vec2 vUv;
+
+out vec4 FragColor;
+
+float sdfLineSquared(vec2 p, vec2 from, vec2 to) {
+  vec2 toStart = p - from;
+  vec2 line = to - from;
+  float lineLengthSquared = dot(line, line);
+  float t = clamp(dot(toStart, line) / lineLengthSquared, 0.0, 1.0);
+  vec2 closestVector = toStart - line * t;
+  return dot(closestVector, closestVector);
+}
+
+void main() {
+vec4 current = texture(inputTexture, vUv, 0.0);
+if (drawing) {
+  vec2 coord = vUv * resolution;
+  float distSquared = sdfLineSquared(coord, from, to);
+  if (distSquared <= radiusSquared) {
+    if (!indicator || color.a > 0.1) {
+      current = color;
+    }
+  } else if (color.a < 0.1 && indicator && distSquared <= (radiusSquared * 1.5)) {
+    current = vec4(1.0);
+  } else if (length(current.rgb) < 0.1 && indicator && distSquared <= (radiusSquared + 6.0)) {
+    // Draw a thin white outline
+    current = vec4(1.0);
+  }
+
+}
+
+FragColor = current;
+}`,
+    });
+
+
+      this.surface.drawSmoothLine = (from, to) => {
+        props.plane.material.uniforms.drawing.value = true;
+        props.plane.material.uniforms.from.value = {
+          ...from, y: this.height - from.y
+        };
+        props.plane.material.uniforms.to.value = {
+          ...to, y: this.height - to.y
+        };
+        this.triggerDraw();
+        props.plane.material.uniforms.drawing.value = false;
+      }
+
+
+    return props;
+  }
+
+  triggerDraw() {
+    this.renderPass();
+  }
+
+  clear() {
+    if (this.initialized) {
+      this.renderTargets.forEach((target) => {
+        this.renderer.setRenderTarget(target);
+        this.renderer.clearColor();
+      });
+    }
+    this.renderer.setRenderTarget(null);
+    this.renderer.clearColor();
+  }
+
+  initialize() {
+    const {
+      plane, canvas, render, renderer, renderTargets
+    } = this.initializeSmoothSurface();
+    this.canvas = canvas;
+    this.plane = plane;
+    this.render = render;
+    this.renderer = renderer;
+    this.renderTargets = renderTargets;
+    const { container, setHex } = this.buildCanvas();
+    this.container = container;
+    this.setHex = setHex;
+    this.renderIndex = 0;
+
+    this.innerInitialize();
+
+
+  }
+
+  innerInitialize() {
+
+  }
+
+  load() {
+    this.reset();
+    this.initialized = true;
+  }
+
+  drawPass() {
+    // if (this.surface.useFallbackCanvas()) {
+    //   return this.surface.texture;
+    // } else {
+    //     this.plane.material.uniforms.inputTexture.value = this.renderTargets[this.renderIndex].texture;
+    //     this.renderIndex = 1 - this.renderIndex;
+    //     this.renderer.setRenderTarget(this.renderTargets[this.renderIndex]);
+    //     this.render();
+    //     return this.renderTargets[this.renderIndex].texture;
+    // }
+  }
+
+  renderPass() {
+    this.drawPass()
+    this.renderer.setRenderTarget(null);
+    this.render();
+  }
+}
+
+</script>
+<script data-run-id="b5719085-766a-47d9-acff-55212c68af95">
+// @run
+class DistanceField extends Drawing {
+  jfaPassesCount() {
+    return this.passes;
+  }
+
+  innerInitialize() {
+    super.innerInitialize();
+
+    const {plane: dfPlane, render: dfRender, renderTargets: dfRenderTargets} = this.initThreeJS({
+      uniforms: {
+        surfaceTexture: {value: null},
+        time: {value: 0.0},
+      },
+      fragmentShader: `
+      precision highp float;
+        // uniform sampler2D surfaceTexture;
+        uniform float time;
+        in vec2 vUv;
+        out vec4 FragColor;
+
+        float sdCircle(vec2 p, vec2 center, float radius) {
+          return length(p - center) - radius;
+        }
+
+        float sdCapsule(vec2 p, vec2 a, vec2 b, float r) {
+          vec2 pa = p - a, ba = b - a;
+          float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+          return length(pa - ba * h) - r;
+        }
+        void main() {
+
+        float PI = 3.14159265359;
+          // vec2 nearestSeed = texture(jfaTexture, vUv).xy;
+
+
+          vec2 p = gl_FragCoord.xy;
+         float minDistance = 999999.9;
+          vec4 color = vec4(0.0);
+
+          float speed = 1.0 + 0.4*time * sin(time);
+         // Clamp by the size of our texture (1.0 in uv space).
+          float distance = sdCircle(vUv, vec2(0.2, 0.5 + cos(speed + time) * 0.2), 0.05);
+
+          if (distance < minDistance) {
+            minDistance = distance;
+            color.xyz = vec3(0.0, 0.5 + 0.5*cos(speed + time), 1.0); 
+          }
+
+          distance = sdCircle(vUv, vec2(0.4, 0.5 + cos(speed + (time + PI*0.1)) * 0.2), 0.05);
+
+          if (distance < minDistance) {
+            minDistance = distance;
+            color.xyz = vec3(0.25 + 0.25*sin(speed + (time + PI*0.2)), 0.5 + 0.5*cos(speed + (time + PI*0.1)), 1.0); 
+          }
+
+          // Add a circle that circles
+          distance = sdCircle(vUv, vec2(0.6, 0.5 + cos(speed+(time + PI*0.2)) * 0.2), 0.05);
+          if (distance < minDistance) {
+            minDistance = distance;
+            color.xyz = vec3(0.50 + 0.50*sin(speed + (time + PI*0.4)), 0.5 + 0.5*cos(speed+(time + PI*0.2)), 1.0); 
+          }
+
+          // One more 
+          distance = sdCircle(vUv, vec2(0.8, 0.5 + cos(speed+(time + PI*0.3)) * 0.2), 0.05);
+          if (distance < minDistance) {
+            minDistance = distance;
+            color.xyz = vec3(0.75 + 0.25*sin(speed + (time + PI*0.6)), 0.5 + 0.5*cos(speed+(time + PI*0.3)), 1.0); 
+          }
+
+          // Add a fixed capsule
+          distance = sdCapsule(vUv, vec2(0.5, 0.5), vec2(0.5, 0.7), 0.02);
+          if (distance < minDistance) {
+            minDistance = distance;
+            color.xyz = vec3(0.0, 0.0, 1.0); 
+          }
+
+          // Add a fixed capsule
+          distance = sdCapsule(vUv, vec2(0.3, 0.2), vec2(0.3, 0.4), 0.02);
+          if (distance < minDistance) {
+            minDistance = distance;
+            color.xyz = vec3(0.0, 0.0, 1.0); 
+          }
+
+          // Add a fixed capsule
+          distance = sdCapsule(vUv, vec2(0.7, 0.2), vec2(0.7, 0.4), 0.02);
+          if (distance < minDistance) {
+            minDistance = distance;
+            color.xyz = vec3(0.0, 0.0, 1.0); 
+          }
+          minDistance = clamp(minDistance, 0.0, 1.0);    
+
+      
+          // Normalize and visualize the distance
+          FragColor = vec4(minDistance, color.xyz);
+        }`,
+    });
+
+    this.dfPlane = dfPlane;
+    this.dfRender = dfRender;
+    this.dfRenderTargets = dfRenderTargets;
+  }
+
+  load() {
+    this.reset();
+    this.initialized = true;
+  }
+
+  clear() {
+    if (this.initialized) {
+      this.dfRenderTargets.forEach((target) => {
+        this.renderer.setRenderTarget(target);
+        this.renderer.clearColor();
+      });
+    }
+    super.clear();
+  }
+
+  dfPass(inputTexture) {
+    this.dfPlane.material.uniforms.time.value = performance.now() / 1000.0;
+    this.renderer.setRenderTarget(this.dfRenderTargets[0]);
+    // this.dfPlane.material.uniforms.jfaTexture.value = inputTexture;
+    // this.dfPlane.material.uniforms.surfaceTexture.value = this.drawPassTexture
+      // ?? this.surface.texture;
+    this.dfRender();
+    return this.dfRenderTargets[0].texture;
+  }
+
+  renderPass() {
+    let out = this.drawPass();
+    // out = this.seedPass(out);
+    out = this.dfPass(out);
+    this.renderer.setRenderTarget(null);
+    this.dfRender();
+  }
+}
+
+</script><script data-run-id="b211f415-c1be-4bce-83a3-d4af7805e107">
+// @run
+class Particle {
+  constructor(color, empty = false) {
+    this.color = color;
+    this.empty = empty;
+    this.modified = true;
+  }
+
+  update () {
+    this.modified = false;
+  }
+
+  getUpdateCount() {
+    return 0;
+  }
+
+  resetVelocity() {
+    this.velocity = 0;
+  }
+}
+
+class MovingParticle extends Particle {
+  constructor(color, empty = false) {
+    super(color, empty);
+    this.color = color;
+    this.empty = empty;
+    this.maxSpeed = 8;
+    this.acceleration = 0.4;
+    this.velocity = 0;
+    this.modified = true;
+  }
+
+  update() {
+    if (this.maxSpeed === 0) {
+      this.modified = false;
+      return;
+    }
+    this.updateVelocity();
+    this.modified = this.velocity > 0.5;
+  }
+
+  updateVelocity() {
+    let newVelocity = this.velocity + this.acceleration;
+    if (Math.abs(newVelocity) > this.maxSpeed) {
+      newVelocity = Math.sign(newVelocity) * this.maxSpeed;
+    }
+    this.velocity = newVelocity;
+  }
+
+  resetVelocity() {
+    this.velocity = 0;
+  }
+
+  getUpdateCount() {
+    const abs = Math.abs(this.velocity);
+    const floored = Math.floor(abs);
+    const mod = abs - floored;
+    return floored + (Math.random() < mod ? 1 : 0);
+  }
+}
+
+class Sand extends MovingParticle {
+  constructor(color) {
+    super(color);
+  }
+}
+
+class Solid extends Particle {
+  constructor(color) {
+    super(color);
+    this.maxSpeed = 0;
+  }
+}
+
+class Empty extends Particle {
+  constructor() {
+    super({ r: 0, g: 0, b: 0 }, true);
+    this.maxSpeed = 0;
+  }
+}
+
+
+</script><script data-run-id="2bfabd8b-35ce-4f6d-bdba-44ccdb773fd5">
+// @run
+function onBuildReload(self, instance) {
+  return (event) => {
+    const oldShaderSet = new Set(
+      Object.keys(window[instance])
+      .filter((a) => a.toLowerCase().includes("plane"))
+      .map((p) => window[instance][p]?.material?.fragmentShader)
+    );
+    document.querySelectorAll("iframe").forEach((o) => {
+      o.parentNode.removeChild(o);
+    });
+    const iframe = document.createElement('iframe');
+    iframe.style.display = "none";
+    document.body.appendChild(iframe);
+    const htmlContent = event.html;
+    iframe.srcdoc = htmlContent;
+
+    iframe.onload = () => {
+      const win = iframe.contentWindow[instance];
+      const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+      const shaders = Object.keys(win)
+        .filter((a) => a.toLowerCase().includes("plane"))
+        .map((p) => win?.[p]?.material?.fragmentShader);
+
+      if (oldShaderSet.size === shaders.length) {
+        const same = shaders.filter((shader) => oldShaderSet.has(shader));
+        if (same.length === shaders.length) {
+          window.location.reload();
+          return;
+        }
+      }
+
+      Object.keys(win)
+        .filter((a) => a.toLowerCase().includes("plane"))
+        .forEach((p) => {
+          const shader = win?.[p]?.material?.fragmentShader;
+          if (shader) {
+            self[p].material.fragmentShader = shader;
+            self[p].material.needsUpdate = true;
+          }
+      });
+
+      self.renderPass();
+      document.querySelectorAll("iframe").forEach((o) => {
+        o.parentNode.removeChild(o);
+      });
+    };
+    return false;
+  };
+}
+
+function addSlider({
+   id,
+   name,
+   onUpdate,
+   options = {},
+    hidden = false,
+   showValue = true,
+  initialSpanValue = undefined,
+ }) {
+  const div = document.createElement("div");
+  div.style = `display: ${hidden ? "none": "flex"}; align-items: center; gap: 8px`;
+  document.querySelector(`#${id}`).appendChild(div);
+  div.append(`${name}`);
+  const input = document.createElement("input");
+  input.id = `${id}-${name.replace(" ", "-").toLowerCase()}-slider`;
+  input.className = "slider";
+  input.type = "range";
+  Object.entries(options).forEach(([key, value]) => {
+    input.setAttribute(key, value);
+  });
+  if (options.value) {
+    input.value = options.value;
+  }
+  const span = document.createElement("span");
+  input.setSpan = (value) => span.innerText = `${value}`;
+
+  input.addEventListener("input", () => {
+    input.setSpan(`${onUpdate(input.value)}`);
+  });
+  span.innerText = `${input.value}`;
+  div.appendChild(input);
+  div.appendChild(span);
+
+  input.onUpdate = onUpdate;
+  if (initialSpanValue != null) {
+    input.setSpan(initialSpanValue);
+  }
+  return input;
+}
+</script>
+<div id="bigger-canvas"></div>
+
+<details style="cursor: pointer">
+  <summary>Additional Controls</summary>
+
+<div style="display: flex; align-items: center; gap: 4px">
+  <input type="checkbox" id="enable-srgb">
+  <label for="enable-srgb">Correct SRGB</label>
+</div>
+
+<div style="display: flex; align-items: center; gap: 4px">
+  <input type="checkbox" id="add-noise">
+  <label for="add-noise">Naive GI Noise</label>
+</div>
+
+<div style="display: none; align-items: center; gap: 4px">
+  <input type="checkbox" id="ringing-fix">
+  <label for="ringing-fix">Ringing Fix</label>
+</div>
+
+<div id="radius-slider-container">
+
+
+
+<div style="display: flex; align-items: center; gap: 4px">
+  <input type="checkbox" id="reduce-demand">
+  <label for="reduce-demand">Reduce Demand (Calculate over 2 frames)</label>
+</div>
+
+</details>
+
+<br>
+
+<div id="radiance-cascades-canvas">
+  <div style="display: flex; gap: 20px;">
+    <div id="radiance-cascades-canvas-canvas-container"><canvas __spector_context_type="webgl2" width="1024" height="1024" style="display: block; width: 512px; height: 512px;"></canvas></div>
+
+
+</div></div>
+<div id="falling-sand-rc-canvas"></div>
+
+<br>
+
+<script data-run-id="7c086b42-6c34-424f-8020-509df0760ea9" id="rc-fragment" type="x-shader/x-fragment">
+// @run id="rc-fragment" type="x-shader/x-fragment"
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec2 resolution;
+uniform sampler2D sceneTexture;
+uniform sampler2D distanceTexture;
+uniform sampler2D lastTexture;
+uniform vec2 cascadeExtent;
+uniform float cascadeCount;
+uniform float cascadeIndex;
+uniform float basePixelsBetweenProbes;
+uniform float cascadeInterval;
+uniform float rayInterval;
+uniform bool addNoise;
+uniform bool enableSun;
+uniform float sunAngle;
+uniform float srgb;
+uniform float firstCascadeIndex;
+uniform float lastCascadeIndex;
+uniform float baseRayCount;
+
+in vec2 vUv;
+out vec4 FragColor;
+
+const float PI = 3.14159265;
+const float TAU = 2.0 * PI;
+const float goldenAngle = PI * 0.7639320225;
+const float sunDistance = 1.0;
+
+const vec3 skyColor = vec3(0.2, 0.24, 0.35) * 6.0;
+const vec3 sunColor = vec3(0.95, 0.9, 0.8) * 4.0;
+
+const vec3 oldSkyColor = vec3(0.02, 0.08, 0.2);
+const vec3 oldSunColor = vec3(0.95, 0.95, 0.9);
+
+vec3 oldSunAndSky(float rayAngle) {
+  // Get the sun / ray relative angle
+  float angleToSun = mod(rayAngle - sunAngle, TAU);
+
+  // Sun falloff based on the angle
+  float sunIntensity = smoothstep(1.0, 0.0, angleToSun);
+
+  // And that's our sky radiance
+  return oldSunColor * sunIntensity + oldSkyColor;
+}
+
+vec3 sunAndSky(float rayAngle) {
+    // Get the sun / ray relative angle
+    float angleToSun = mod(rayAngle - sunAngle, TAU);
+
+    // Sun falloff
+    float sunIntensity = pow(max(0.0, cos(angleToSun)), 4.0 / sunDistance);
+
+    return mix(sunColor * sunIntensity, skyColor, 0.3);
+}
+
+float rand(vec2 co) {
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+
+vec4 safeTextureSample(sampler2D tex, vec2 uv, float lod) {
+    vec4 color = textureLod(tex, uv, lod);
+    return vec4(color.rrr, 1.0);
+}
+
+vec4 colorSample(sampler2D tex, vec2 uv, float lod, bool srgbSample) {
+    vec4 color = textureLod(tex, uv, lod);
+    if (!srgbSample) {
+      return color;
+    }
+    return vec4(pow(color.rgb, vec3(srgb)), color.a);
+}
+
+vec4 colorWSample(sampler2D tex, vec2 uv, float lod, bool srgbSample) {
+    vec3 color = textureLod(tex, uv, lod).gba;
+    return vec4(0.0, color);
+}
+
+vec4 raymarch(
+  vec2 normalizedPoint, vec2 delta, float scale, vec2 oneOverSize, vec2 interval, float intervalLength, float minStepSize
+) {
+    vec2 rayUv = normalizedPoint + delta * interval;
+    if (floor(rayUv) != vec2(0.0)) return vec4(0);
+
+    vec2 pre = delta * scale * oneOverSize;
+
+    int safety = 0;
+
+    for (float dist = 0.0; dist < intervalLength && safety < 100; safety++) {
+        float df = safeTextureSample(distanceTexture, rayUv, 0.0).r;
+
+        if (df <= minStepSize) {
+          vec4 sampleColor = colorWSample(distanceTexture, rayUv, 0.0, true);
+          return sampleColor;
+        }
+
+        dist += df * scale;
+        if (dist >= intervalLength) break;
+
+        rayUv += pre * df;
+        if (floor(rayUv) != vec2(0.0)) break;
+    }
+
+    // divide by hits?
+    return vec4(0);
+}
+
+vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) {
+    // Occluders / Largest cascade
+    if (currentRadiance.a > 0.0 || cascadeIndex >= cascadeCount - 1.0) {
+      return currentRadiance;
+    }
+
+    float upperSpacing = pow(spacingBase, cascadeIndex + 1.0);
+    vec2 upperSize = floor(cascadeExtent / upperSpacing);
+    vec2 upperPosition = vec2(
+      mod(index, upperSpacing), floor(index / upperSpacing)
+    ) * upperSize;
+
+    vec2 offset = (position + 0.5) / spacingBase;
+
+    // Sample in-between the 4 probes for pre-averaging
+    vec2 clamped = clamp(offset, vec2(1.0), upperSize - 1.0);
+    vec2 samplePosition = (upperPosition + clamped);
+    vec4 upperSample = colorSample(
+      lastTexture,
+      samplePosition / cascadeExtent,
+      0.0,
+      false
+    );
+
+    vec3 c = currentRadiance.rgb + upperSample.rgb;
+
+
+    return vec4(
+      c,
+      currentRadiance.a + upperSample.a
+    );
+}
+
+void main() {
+    vec2 coord = floor(vUv * cascadeExtent);
+
+    if (cascadeIndex == 0.0) {
+      vec4 color = colorWSample(sceneTexture, vUv, cascadeIndex, true);
+      if (color.a > 0.0) {
+          FragColor = vec4(
+              pow(color.rgb, vec3(1.0 / srgb)),
+              color.a
+          );
+          return;
+      }
+    }
+
+    float base = baseRayCount;
+    float rayCount = pow(base, cascadeIndex + 1.0);
+    float sqrtBase = sqrt(baseRayCount);
+    float spacing = pow(sqrtBase, cascadeIndex);
+
+    // Hand-wavy rule that improved smoothing of other base ray counts
+    float modifierHack = base < 16.0 ? 1.0 : sqrtBase;
+
+    vec2 size = floor(cascadeExtent / spacing);
+    vec2 probeRelativePosition = mod(coord, size);
+    vec2 rayPos = floor(coord / size);
+
+    float modifiedInterval = modifierHack * rayInterval * cascadeInterval;
+
+    float start = cascadeIndex == 0.0 ? cascadeInterval : modifiedInterval;
+    vec2 interval = (start * pow(base, (cascadeIndex - 1.0))) / resolution;
+    float intervalLength = (modifiedInterval) * pow(base, cascadeIndex);
+
+    vec2 probeCenter = (probeRelativePosition + 0.5) * basePixelsBetweenProbes * spacing;
+
+    float preAvgAmt = baseRayCount;
+
+    // Calculate which set of rays we care about
+    float baseIndex = (rayPos.x + (spacing * rayPos.y)) * preAvgAmt;
+    // The angle delta (how much it changes per index / ray)
+    float angleStep = TAU / rayCount;
+
+    // Can we do this instead of length?
+    float scale = min(resolution.x, resolution.y);
+    vec2 oneOverSize = 1.0 / resolution;
+    float minStepSize = min(oneOverSize.x, oneOverSize.y) * 0.5;
+    float avgRecip = 1.0 / (preAvgAmt);
+
+    vec2 normalizedProbeCenter = probeCenter * oneOverSize;
+
+    vec4 totalRadiance = vec4(0.0);
+    float noise = addNoise
+        ? rand(vUv * (cascadeIndex + 1.0)) / (rayCount * 0.5)
+        : 0.0;
+
+    for (int i = 0; i < int(preAvgAmt); i++) {
+      float index = baseIndex + float(i);
+      float angle = (index + 0.5) * angleStep + noise;
+      vec2 rayDir = vec2(cos(angle), -sin(angle));
+
+      // Core raymarching!
+      vec4 raymarched = raymarch(
+        normalizedProbeCenter, rayDir, scale, oneOverSize, interval, intervalLength, minStepSize
+      );
+
+      // Merge with the previous layer
+      vec4 merged = merge(raymarched, index, probeRelativePosition, sqrtBase);
+
+      // If enabled, apply the sky radiance
+      if (enableSun && cascadeIndex == cascadeCount - 1.0) {
+        merged.rgb = max(addNoise ? oldSunAndSky(angle) : sunAndSky(angle), merged.rgb);
+      }
+
+      totalRadiance += merged * avgRecip;
+    }
+
+    FragColor = vec4(
+      (cascadeIndex > firstCascadeIndex)
+        ? totalRadiance.rgb
+        : pow(totalRadiance.rgb, vec3(1.0 / srgb)),
+      1.0
+    );
+}
+</script><script data-run-id="eb9f28da-9c8b-4859-b260-1b032fc0fc1d">
+// @run
+class RC extends DistanceField {
+  innerInitialize() {
+    this.lastRequest = Date.now();
+    this.frame = 0;
+    this.baseRayCount = 4.0;
+    this.reduceDemandCheckbox = document.querySelector("#reduce-demand");
+    this.forceFullPass = !this.reduceDemandCheckbox.checked;
+    super.innerInitialize();
+    this.activelyDrawing = false;
+    this.rawBasePixelsBetweenProbes = 1.0;
+
+    this.animating = false;
+
+    this.enableSrgb = document.querySelector("#enable-srgb");
+    this.addNoise = document.querySelector("#add-noise");
+    this.ringingFix = document.querySelector("#ringing-fix");
+    this.sunAngleSlider = { value: 0 }; // document.querySelector("#rc-sun-angle-slider");
+    // this.sunAngleSlider.disabled = true;
+
+    this.rayIntervalSlider = addSlider({
+      id: "radius-slider-container", name: "Interval Length", onUpdate: (value) => {
+        this.rcPlane.material.uniforms.rayInterval.value = value;
+        this.renderPass();
+        return value;
+      },
+      options: {min: 1.0, max: 512.0, step: 1.0, value: 1.0},
+    });
+
+    this.baseRayCountSlider = addSlider({
+      id: "radius-slider-container", name: "Base Ray Count", onUpdate: (value) => {
+        this.rcPlane.material.uniforms.baseRayCount.value = Math.pow(4.0, value);
+        this.baseRayCount = Math.pow(4.0, value);
+        this.renderPass();
+        return Math.pow(4.0, value);
+      },
+      options: {min: 1.0, max: 3.0, step: 1.0, value: 1.0},
+    });
+
+    this.initializeParameters();
+
+    const fragmentShader = document.querySelector("#rc-fragment").innerHTML;
+
+    const {plane: rcPlane, render: rcRender, renderTargets: rcRenderTargets} = this.initThreeJS({
+      renderTargetOverrides: {
+        minFilter: THREE.LinearMipMapLinearFilter,
+        magFilter: THREE.LinearFilter,
+        generateMipmaps: true,
+      },
+      uniforms: {
+        resolution: {value: new THREE.Vector2(this.width, this.height)},
+        sceneTexture: {value: this.surface.texture},
+        distanceTexture: {value: null},
+        lastTexture: {value: null},
+        cascadeExtent: {value: new THREE.Vector2(this.radianceWidth, this.radianceHeight)},
+        cascadeCount: {value: this.radianceCascades},
+        cascadeIndex: {value: 0.0},
+        basePixelsBetweenProbes: {value: this.basePixelsBetweenProbes},
+        cascadeInterval: {value: this.radianceInterval},
+        rayInterval: {value: this.rayIntervalSlider.value},
+        baseRayCount: {value: Math.pow(4.0, this.baseRayCountSlider.value)},
+        sunAngle: { value: this.sunAngleSlider.value },
+        time: { value: 0.1 },
+        srgb: { value: this.enableSrgb.checked ? 2.2 : 1.0 },
+        enableSun: { value: false },
+        addNoise: { value: this.addNoise.checked },
+        firstCascadeIndex: { value: 0 },
+        time: { value: 0.0 },
+      },
+      fragmentShader,
+    });
+
+    this.baseRayCountSlider.setSpan(Math.pow(4.0, this.baseRayCountSlider.value));
+
+    this.firstLayer = this.radianceCascades - 1;
+    this.lastLayer = 0;
+
+    this.lastLayerSlider = addSlider({
+      id: "radius-slider-container",
+      name: "(RC) Layer to Render",
+      onUpdate: (value) => {
+        this.rcPlane.material.uniforms.firstCascadeIndex.value = value;
+        this.lastLayer = value;
+        this.renderPass();
+        return value;
+      },
+      options: { min: 0, max: this.radianceCascades - 1, value: 0, step: 1 },
+    });
+
+    this.firstLayerSlider = addSlider({
+      id: "radius-slider-container",
+      name: "(RC) Layer Count",
+      onUpdate: (value) => {
+        this.rcPlane.material.uniforms.cascadeCount.value = value;
+        this.firstLayer = value - 1;
+        this.renderPass();
+        return value;
+      },
+      options: { min: 1, max: this.radianceCascades, value: this.radianceCascades, step: 1 },
+    });
+
+    this.stage = 3;
+    this.stageToRender = addSlider({
+      id: "radius-slider-container",
+      name: "Stage To Render",
+      onUpdate: (value) => {
+        this.stage = value;
+        this.renderPass();
+        return value;
+      },
+      options: { min: 0, max: 3, value: 3, step: 1 },
+    });
+
+    this.pixelsBetweenProbes = addSlider({
+      id: "radius-slider-container",
+      name: "Pixels Between Base Probe",
+      onUpdate: (value) => {
+        this.rawBasePixelsBetweenProbes = Math.pow(2, value);
+        this.initializeParameters(true);
+        this.renderPass();
+        return Math.pow(2, value);
+      },
+      options: { min: 0, max: 4, value: 0, step: 1 },
+    });
+
+    const {plane: overlayPlane, render: overlayRender, renderTargets: overlayRenderTargets} = this.initThreeJS({
+      uniforms: {
+        inputTexture: {value: null},
+        drawPassTexture: {value: null},
+      },
+      fragmentShader: `
+        uniform sampler2D inputTexture;
+        uniform sampler2D drawPassTexture;
+
+        varying vec2 vUv;
+        out vec4 FragColor;
+
+        void main() {
+          vec3 rc = texture(inputTexture, vUv).rgb;
+          FragColor = vec4(rc, 1.0);
+        }`
+    });
+
+    this.radiusSlider = addSlider({
+      id: "radius-slider-container", name: "Brush Radius", onUpdate: (value) => {
+        this.surface.RADIUS = value;
+        this.plane.material.uniforms.radiusSquared.value = Math.pow(this.surface.RADIUS, 2.0);
+        this.renderPass();
+        return this.surface.RADIUS;
+      },
+      options: {min: 1.0, max: 100.0, step: 0.1, value: 6.0},
+    });
+
+    this.rcPlane = rcPlane;
+    this.rcRender = rcRender;
+    this.rcRenderTargets = rcRenderTargets;
+    this.prev = 0;
+
+    this.overlayPlane = overlayPlane;
+    this.overlayRender = overlayRender;
+    this.overlayRenderTargets = overlayRenderTargets;
+  }
+
+  // Key parameters we care about
+  initializeParameters(setUniforms) {
+    this.renderWidth = this.width;
+    this.renderHeight = this.height;
+
+    // Calculate radiance cascades
+    const angularSize = Math.sqrt(
+      this.renderWidth * this.renderWidth + this.renderHeight * this.renderHeight
+    );
+    this.radianceCascades = Math.ceil(
+      Math.log(angularSize) / Math.log(4)
+    ) + 1.0;
+    this.basePixelsBetweenProbes = this.rawBasePixelsBetweenProbes;
+    this.radianceInterval = 1.0;
+
+    this.radianceWidth = Math.floor(this.renderWidth / this.basePixelsBetweenProbes);
+    this.radianceHeight = Math.floor(this.renderHeight / this.basePixelsBetweenProbes);
+
+    if (setUniforms) {
+      this.rcPlane.material.uniforms.basePixelsBetweenProbes.value = this.basePixelsBetweenProbes;
+      this.rcPlane.material.uniforms.cascadeCount.value = this.radianceCascades;
+      this.rcPlane.material.uniforms.cascadeInterval.value = this.radianceInterval;
+      this.rcPlane.material.uniforms.cascadeExtent.value = (
+        new THREE.Vector2(this.radianceWidth, this.radianceHeight)
+      );
+
+    }
+  }
+
+  overlayPass(inputTexture) {
+    this.overlayPlane.material.uniforms.drawPassTexture.value = this.drawPassTexture;
+
+    if (this.forceFullPass) {
+      this.frame = 0;
+    }
+
+    if (this.frame == 0 && !this.forceFullPass) {
+      const input = this.overlayRenderTargets[0].texture ?? this.drawPassTexture;
+      this.overlayPlane.material.uniforms.inputTexture.value = input;
+      this.renderer.setRenderTarget(this.overlayRenderTargets[1]);
+      this.overlayRender();
+    } else {
+      this.overlayPlane.material.uniforms.inputTexture.value = inputTexture;
+      this.renderer.setRenderTarget(this.overlayRenderTargets[0]);
+      this.overlayRender();
+    }
+
+    if (!this.isDrawing) {
+      this.overlay = true;
+      const frame = this.forceFullPass ? 0 : 1 - this.frame;
+      this.plane.material.uniforms.inputTexture.value = this.overlayRenderTargets[frame].texture;
+      this.plane.material.uniforms.indicator.value = true;
+      this.surface.drawSmoothLine(this.surface.currentPoint, this.surface.currentPoint);
+      this.plane.material.uniforms.indicator.value = false;
+      this.overlay = false;
+    }
+  }
+
+  triggerDraw() {
+    if (this.overlay) {
+      this.renderer.setRenderTarget(null);
+      this.render();
+      return;
+    }
+    super.triggerDraw();
+  }
+
+  canvasModifications() {
+    return {
+      startDrawing: (e) => {
+        this.lastRequest = Date.now();
+        this.surface.startDrawing(e);
+      },
+      onMouseMove: (e) => {
+        const needRestart = Date.now() - this.lastRequest > 1000;
+        this.lastRequest = Date.now();
+        this.surface.onMouseMove(e);
+        if (needRestart) {
+          this.renderPass();
+        }
+      },
+      stopDrawing: (e, redraw) => {
+        this.lastRequest = Date.now();
+        this.surface.stopDrawing(e, redraw);
+      },
+      toggleSun: (e) => {
+        if (e.currentTarget.getAttribute("selected") === "true") {
+          e.currentTarget.removeAttribute("selected");
+        } else {
+          e.currentTarget.setAttribute("selected", "true");
+        }
+        const current = this.rcPlane.material.uniforms.enableSun.value;
+        this.sunAngleSlider.disabled = current;
+          this.rcPlane.material.uniforms.enableSun.value = !current;
+          this.renderPass();
+      }
+    }
+  }
+
+  rcPass(distanceFieldTexture, drawPassTexture) {
+    this.rcPlane.material.uniforms.distanceTexture.value = distanceFieldTexture;
+    this.rcPlane.material.uniforms.sceneTexture.value = drawPassTexture;
+
+
+    if (this.frame == 0) {
+      this.rcPlane.material.uniforms.lastTexture.value = null;
+    }
+
+    const halfway = Math.floor((this.firstLayer - this.lastLayer) / 2);
+    const last = this.frame == 0 && !this.forceFullPass ? halfway + 1 : this.lastLayer;
+    this.rcPassCount = this.frame == 0 ? this.firstLayer : halfway;
+
+    for (let i = this.firstLayer; i >= last; i--) {
+
+      this.rcPlane.material.uniforms.cascadeIndex.value = i;
+
+      this.renderer.setRenderTarget(this.rcRenderTargets[this.prev]);
+      this.rcRender();
+      this.rcPlane.material.uniforms.lastTexture.value = this.rcRenderTargets[this.prev].texture;
+      this.prev = 1 - this.prev;
+
+    }
+
+    return this.rcRenderTargets[1 - this.prev].texture;
+  }
+
+  doRenderPass() {
+    this.rcPlane.material.uniforms.time.value = performance.now() / 1000.0;
+
+    if (this.frame == 0) {
+      if (this.stage == 0) {
+        this.renderer.setRenderTarget(null);
+        this.render();
+        this.finishRenderPass();
+        return;
+      }
+
+      if (this.stage == 1) {
+        this.finishRenderPass();
+        this.renderer.setRenderTarget(null);
+        return;
+      }
+
+      this.distanceFieldTexture = this.dfPass(this.drawPassTexture);
+
+
+      if (this.stage == 2) {
+        this.finishRenderPass();
+        this.renderer.setRenderTarget(null);
+        this.dfRender();
+        return;
+      }
+    }
+
+    let rcTexture = this.rcPass(this.distanceFieldTexture, this.drawPassTexture);
+
+    this.overlayPass(rcTexture);
+    this.finishRenderPass();
+  }
+
+  finishRenderPass() {
+    if (!this.forceFullPass) {
+      this.frame = 1 - this.frame;
+    }
+  }
+
+  // foo bar baz!!
+  renderPass() {
+    this.drawPassTexture = this.drawPass();
+    if (!this.animating) {
+      this.animating = true;
+      requestAnimationFrame(() => {
+        this.animate();
+      });
+    }
+  }
+
+  animate() {
+    this.animating = true;
+
+    this.doRenderPass();
+    this.desiredRenderPass = false;
+
+    requestAnimationFrame(() => {
+      this.animate()
+    });
+  }
+
+  clear() {
+    this.lastFrame = null;
+    if (this.initialized) {
+      this.rcRenderTargets.forEach((target) => {
+        this.renderer.setRenderTarget(target);
+        this.renderer.clearColor();
+      });
+    }
+    super.clear();
+    this.renderPass();
+  }
+
+  //foo bar baz!!
+  load() {
+    this.reduceDemandCheckbox.addEventListener("input", () => {
+      this.forceFullPass = !this.reduceDemandCheckbox.checked;
+      this.renderPass();
+    });
+    this.enableSrgb.addEventListener("input", () => {
+      this.rcPlane.material.uniforms.srgb.value = this.enableSrgb.checked ? 2.2 : 1.0;
+      this.renderPass();
+    });
+    this.addNoise.addEventListener("input", () => {
+      this.rcPlane.material.uniforms.addNoise.value = this.addNoise.checked;
+      this.renderPass();
+    });
+    this.sunAngleSlider.addEventListener("input", () => {
+      this.rcPlane.material.uniforms.sunAngle.value = this.sunAngleSlider.value;
+      this.renderPass();
+    })
+    this.reset();
+    this.initialized = true;
+  }
+
+  reset() {
+    this.clear();
+    let last = undefined;
+    return new Promise((resolve) => {
+      this.setHex("#f9a875");
+      getFrame(() => this.draw(last, 0, false, resolve));
+    }).then(() => new Promise((resolve) => {
+      last = undefined;
+      getFrame(() => {
+        this.surface.mode = Solid;
+        this.setHex("#000000");
+        getFrame(() => this.draw(last, 0, true, resolve));
+      });
+    }))
+      .then(() => {
+        this.renderPass();
+        getFrame(() => this.setHex("#fff6d3"));
+        this.surface.mode = Sand;
+      });
+
+  }
+}
+// Get all query parameters
+const urlParams = new URLSearchParams(window.location.search);
+
+// Get a specific parameter
+const widthString = urlParams.get('width');
+const heightString = urlParams.get('height');
+const widthParam = widthString ? parseInt(widthString) : 512;
+const heightParam = heightString ? parseInt(heightString) : 512;
+
+let [width, height] = [widthParam, heightParam];
+
+new RC({id: "radiance-cascades-canvas", width, height, radius: 4});
+
+</script></div>
+      
+      
+    
+</body></html>
