@@ -7,12 +7,6 @@ type HighScore = {
   name?: string;
 };
 
-let outsideStartGameFn: () => void;
-
-export const setStartGameFn = (fn: () => void) => {
-  outsideStartGameFn = fn;
-};
-
 const storeHighScore = ({ id, score, time, name }: HighScore) => {
   // Retrieve high scores from local storage
   const highScores = JSON.parse(localStorage.getItem(localStorageName) || "[]");
@@ -81,39 +75,35 @@ const score = (entry: HighScore, index: number, showInput: boolean) => {
   if (showInput) {
     scoreEntry.className += " current-player";
 
-    // Create a form element
-    const form = document.createElement("form");
-
-    // Create an input box for entering the name
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = entry.name || ""; // Default value is "Player"
-    input.placeholder = "Enter your name";
-    input.className = "name-input";
-
     // Create a submit button
     const submitButton = document.createElement("button");
     submitButton.type = "submit";
     submitButton.textContent = "Save";
 
+    scoreEntry.innerHTML = `<div class="place">${index + 1}</div><div class="name">
+      <form id="name-form"><input type="text" value="${entry.name || ""}" placeholder="Enter name" class="name-input" autofocus /></form>
+      </div><div class="score">${entry.score} points</div><div class="time">${entry.time?.toFixed(2).replace(".", ":")}s</div>`;
     // Handle form submission
-    form.onsubmit = (event) => {
-      event.preventDefault();
-      const newName = input.value.trim();
-      if (newName) {
-        storeHighScore({ id: entry.id, name: newName }); // Update the high score
-        displayHighScores(); // Re-render the high scores list
-      }
-    };
 
-    // Append the input and button to the form
-    form.appendChild(input);
-    form.appendChild(submitButton);
-
-    // Append the form to the score entry
-    scoreEntry.appendChild(form);
+    const form = scoreEntry.querySelector("form");
+    const input = scoreEntry.querySelector("input");
+    if (form && input) {
+      // Select the input field
+      input.focus();
+      form.onsubmit = (event) => {
+        event.preventDefault();
+        const newName = input.value.trim();
+        if (newName) {
+          storeHighScore({ id: entry.id, name: newName }); // Update the high score
+          displayHighScores(); // Re-render the high scores list
+        }
+      };
+    }
   } else {
-    scoreEntry.innerHTML = `${index + 1}. ${entry.name || "---"} - ${entry.score} points - ${entry.time?.toFixed(2).replace(".", ":")}s`;
+    // Display the high score, each entry has a place, name, score, and time
+    // Each should be in a div element with classes e.g. "name", "score", and "time"
+    scoreEntry.innerHTML = `<div class="place">${index + 1}</div><div class="name">${entry.name || "---"}</div><div class="score">${entry.score} points</div><div class="time">${entry.time?.toFixed(2).replace(".", ":")}s</div>`;
+    // scoreEntry.innerHTML = `${index + 1}. ${entry.name || "---"} - ${entry.score} points - ${entry.time?.toFixed(2).replace(".", ":")}s`;
   }
 
   return scoreEntry;

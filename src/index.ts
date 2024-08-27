@@ -131,6 +131,7 @@ onGameStop(() => {
     music.stop();
     musicStarted = 0;
   }
+  document.getElementById("game-ui")?.setAttribute("style", "display: none");
   document.getElementById("restart")?.addEventListener("click", () => {
     start();
   });
@@ -139,15 +140,6 @@ onGameStop(() => {
 document.querySelector("#start button")?.addEventListener("click", () => {
   start();
 });
-
-// canvas.addEventListener("mousedown", (event) => {
-//   // mouseDown = 1;
-//   // mouseClicked = 1;
-// });
-
-// canvas.addEventListener("mouseup", (event) => {
-//   // mouseDown = 0;
-// });
 
 // Add keyboard controls, that move the character via the moveX, moveY, cX, cY
 const keyState: { [key: string]: boolean } = {
@@ -165,8 +157,12 @@ const keyState: { [key: string]: boolean } = {
 window.addEventListener("keydown", (event) => {
   keyState[event.code] = true;
 
-  // Start game if Return key is pressed
-  if (event.code === "Enter" && !gameStarted) {
+  // Start game if Return key is pressed, but only if the Start button is visible
+  if (
+    event.code === "Enter" &&
+    !gameStarted &&
+    document.querySelector("#start")?.getAttribute("style") !== "display: none"
+  ) {
     start();
   }
 });
@@ -218,10 +214,10 @@ function updateMovement2() {
   const friction = 0.96; // Friction factor (0-1)
 
   // Determine target movement direction based on key presses
-  if (keyState.ArrowUp) targetDy += 1;
-  if (keyState.ArrowDown) targetDy -= 1;
-  if (keyState.ArrowLeft) targetDx -= 1;
-  if (keyState.ArrowRight) targetDx += 1;
+  if (keyState.ArrowUp || keyState.KeyW) targetDy += 1;
+  if (keyState.ArrowDown || keyState.KeyS) targetDy -= 1;
+  if (keyState.ArrowLeft || keyState.KeyA) targetDx -= 1;
+  if (keyState.ArrowRight || keyState.KeyD) targetDx += 1;
 
   // Normalize diagonal movement
   if (targetDx !== 0 && targetDy !== 0) {

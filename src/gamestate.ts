@@ -314,6 +314,17 @@ export function update(
   if (!gameStarted) {
     return;
   }
+  // if (!gameStarted) {
+  //   gameStarted = true;
+  //   const over = document.getElementById("over");
+  //   if (over) {
+  //     over.style.display = "block";
+  //   }
+  //   displayHighScores();
+  // }
+  // return;
+
+  // }
   //   return true;
   ctx.clearRect(0, 0, gameWidth, gameHeight);
   const deltaTime = currentTime - lastTime;
@@ -400,6 +411,7 @@ export function update(
         }
       } else if ((avoid13 && box.value === 13) || (!avoid13 && box.value !== 13)) {
         lives -= 1;
+        score -= box.value;
         playSound(0);
       }
 
@@ -438,7 +450,7 @@ export function update(
 
     const highscore = storeHighScore({
       score,
-      time: wave * 13 + timeLeft / 100,
+      time: (wave - 1) * 13 + (1300 - timeLeft) / 100,
     });
 
     displayHighScores(highscore);

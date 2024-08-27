@@ -194,8 +194,16 @@ export default class Music {
     let delay = 0;
     let accumulatedLength = 0;
 
+    const arpeggioPatterns = [
+      [1, 3, 5, 8, 5, 3, 5],
+      [1, 4, 6, 8, 6, 4, 6],
+      [1, 5, 7, 8, 7, 5, 7],
+    ]; // Example arpeggio patterns
+
+    const selectedPattern = arpeggioPatterns[Math.floor(Math.random() * arpeggioPatterns.length)];
+    let i = 0;
     while (accumulatedLength < totalLength) {
-      const randomNote = this._getRandomNote(); // Method to get a random note
+      const randomNote = this._getNote(selectedPattern[i]); // Method to get a random note
       let randomDuration = this._getRandomDuration(); // Method to get a random duration
 
       if (accumulatedLength + randomDuration > totalLength) {
@@ -212,15 +220,16 @@ export default class Music {
 
       delay += duration;
       accumulatedLength += randomDuration;
+      i = i + 1;
     }
 
     this.scheduleAlignedTimeout(() => this._playMelodyOrRandomSection(), delay, "melody");
   }
 
   // Example helper methods to get random note and duration
-  private _getRandomNote(): string {
-    const notes = ["C", "D", "E", "F", "G", "A", "B"]; // Example note set
-    return notes[Math.floor(Math.random() * notes.length)];
+  private _getNote(i: number): string {
+    const notes = ["C", "D", "E", "F", "G", "A", "B", "C'", "D'"]; // Example note set
+    return notes[i];
   }
 
   private _getRandomDuration(): number {
@@ -351,19 +360,19 @@ export default class Music {
   }
 
   setNextTempo() {
-    this._scheduledTimeouts.forEach(([time, timeout]) => {
-      clearTimeout(timeout);
-    });
-    this.scheduleAlignedTimeout(
-      () => {
-        this._tempo += 5;
-        this._playBass();
-        this._playMelody();
-        this._playDrums();
-      },
-      (60 / this._tempo) * 1000,
-      "tempo",
-    );
+    // this._scheduledTimeouts.forEach(([time, timeout]) => {
+    //   clearTimeout(timeout);
+    // });
+    // this.scheduleAlignedTimeout(
+    //   () => {
+    //     this._tempo += 5;
+    //     this._playBass();
+    //     this._playMelody();
+    //     this._playDrums();
+    //   },
+    //   (60 / this._tempo) * 1000,
+    //   "tempo",
+    // );
   }
 
   scheduleAlignedTimeout(callback: () => void, delay = 0, name = "timeout") {

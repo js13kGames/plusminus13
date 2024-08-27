@@ -30,14 +30,11 @@
     color: white;
 }
 
-#lives, #timer, #score {
-    /* color: white; Ensures text is visible on possible dark backgrounds */
-    /* font-size: 1.5em; Makes text larger */
-}
-
 #scoresuper {
     display: flex;
     align-items: center;
+    justify-content: center;
+    flex: 1;
 }
 
 #lives {
@@ -45,10 +42,14 @@
     font-size: 2em;
     color: red;
     line-height: 0;
+    text-align: left;
+    flex: 1;
 }
 
 #timer {
     font-weight: bold; /* Optional: emphasizes the timer */
+    text-align: right;
+    flex: 1;
     /* font-size: 3em;; */
 }
 
@@ -81,6 +82,7 @@
     font-size: 1em;
     color: white;
     text-align: center;
+    width: 350px;
 }
 
 #start {
@@ -113,6 +115,59 @@
   display: none;
 }
 
+.score-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.score-entry:last-child {
+    border-bottom: none;
+}
+
+
+.place {
+    flex: 0 0 30px;
+    text-align: center;
+    font-weight: bold;
+    color: #fff;
+}
+
+.name {
+    flex: 1;
+    text-align: left;
+    font-weight: bold;
+    color: #ccc;
+}
+
+.score {
+    flex: 0 0 100px;
+    text-align: right;
+    color: #aaa;
+}
+
+.time {
+    flex: 0 0 80px;
+    text-align: right;
+    color: #999;
+}
+
+.score-entry input {
+    font-family: monospace;
+    width: 100%;
+    background: transparent;
+    animation: blink1 1s step-start infinite;
+    border: 0;
+    font-size: 1em;
+    color: white;
+}
+
+@keyframes blink1 {
+    0%, 100% { color: red; }
+    50% { color: #fff; }
+}
 
 @keyframes blink {
     0%, 100% { background: #000; }
@@ -127,12 +182,13 @@
         <div id="lives">
             ♥️♥️♥️
         </div>
-        <div id="timer">13:00</div>
         <div id="scoresuper">
             <div id="score">0</div>
             <div id="super"><div class="progress-circle" id="progress-circle">
             </div></div>
         </div>
+        <div id="timer">13:00</div>
+
     </div>
     <div id="start">
         <p>WASD, Space for super</p>
@@ -144,7 +200,7 @@
         </button>
     </div>
     <div id="over" style="display: none;">
-        Game Over<br>
+        <h1>Game Over</h1>
         <div id="scoreboard">
 
         </div>

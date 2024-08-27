@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Engine with Web Audio API</title>
+</head>
+<body>
+    <h1>Music Engine</h1>
+    <button id="playBtn">Play/Pause</button>
+    <label for="tempoSlider">Tempo: </label>
+    <input type="range" id="tempoSlider" min="60" max="180" value="120">
+    <span id="tempoValue">120 BPM</span>
+
+    <script>
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let isPlaying = false;
+        let tempo = 120;
+        let currentBeat = 0;
+        let startTime;
+        let timerID;
+
+        const kickBuffer = createKickBuffer();
+        const snareBuffer = createSnareBuffer();
+
+        function createOscillator(freq, type) {
+            const osc = audioContext.createOscillator();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioContext.currentTime);
+            return osc;
+        }
+
+        function createKickBuffer() {
+            const bufferSize = audioContext.sampleRate * 0.5;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.sin(i * 0.01) * Math.exp(-0.001 * i);
+            }
+            return buffer;
+        }
+
+        function createSnareBuffer() {
+            const bufferSize = audioContext.sampleRate * 0.2;
+            const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.exp(-0.005 * i);
+            }
+            return buffer;
+        }
+
+        function playSound(buffer) {
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.start();
+        }
+
+        function playBeat() {
+            const time = audioContext.currentTime;
+            const beatDuration = 60 / tempo;
+
+            // Bass
+            if (currentBeat % 2 === 0) {
+                const bass = createOscillator(55, 'sine');
+                bass.connect(audioContext.destination);
+                bass.start(time);
+                bass.stop(time + 0.1);
+            }
+
+            // Drums
+            if (currentBeat % 4 === 0) {
+                playSound(kickBuffer);
+            } else if (currentBeat % 4 === 2) {
+                playSound(snareBuffer);
+            }
+
+            // Melody
+            const melodyNotes = [440, 494, 523, 587, 659];
+            const melody = createOscillator(melodyNotes[currentBeat % melodyNotes.length], 'square');
+            melody.connect(audioContext.destination);
+            melody.start(time);
+            melody.stop(time + 0.1);
+
+            currentBeat = (currentBeat + 1) % 8;
+            timerID = setTimeout(playBeat, beatDuration * 1000);
+        }
+
+        function togglePlay() {
+            if (isPlaying) {
+                clearTimeout(timerID);
+                isPlaying = false;
+            } else {
+                isPlaying = true;
+                startTime = audioContext.currentTime;
+                playBeat();
+            }
+        }
+
+        document.getElementById('playBtn').addEventListener('click', togglePlay);
+
+        const tempoSlider = document.getElementById('tempoSlider');
+        const tempoValue = document.getElementById('tempoValue');
+
+        tempoSlider.addEventListener('input', function() {
+            tempo = parseInt(this.value);
+            tempoValue.textContent = `${tempo} BPM`;
+        });
+    </script>
+</body>
+</html>
