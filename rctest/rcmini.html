@@ -13,41 +13,10 @@
     body {
       margin: 0;
     }
-    details { 
-      position: absolute;
-      color: white;
-    }
   </style>
 </head>
 
 <body>
-  <details style="cursor: pointer">
-    <summary>Additional Controls</summary>
-
-    <div style="display: flex; align-items: center; gap: 4px">
-      <input type="checkbox" id="enable-srgb">
-      <label for="enable-srgb">Correct SRGB</label>
-    </div>
-
-    <div style="display: flex; align-items: center; gap: 4px">
-      <input type="checkbox" id="add-noise">
-      <label for="add-noise">Naive GI Noise</label>
-    </div>
-
-    <div style="display: none; align-items: center; gap: 4px">
-      <input type="checkbox" id="ringing-fix">
-      <label for="ringing-fix">Ringing Fix</label>
-    </div>
-
-    <div id="radius-slider-container">
-      <div style="display: flex; align-items: center; gap: 4px">
-        <input type="checkbox" id="reduce-demand">
-        <label for="reduce-demand">Reduce Demand (Calculate over 2 frames)</label>
-      </div>
-    </div>
-  </details>
-
-
   <div id="radiance-cascades-canvas">
     <div style="display: flex; gap: 20px;">
       <div id="radiance-cascades-canvas-canvas-container"><canvas __spector_context_type="webgl2" width="1024"
@@ -55,11 +24,7 @@
     </div>
   </div>
 
-
-
-
-  <script data-run-id="7c086b42-6c34-424f-8020-509df0760ea9" id="rc-fragment" type="x-shader/x-fragment">
-// @run id="rc-fragment" type="x-shader/x-fragment"
+  <script id="rc-fragment" type="x-shader/x-fragment">
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
@@ -285,7 +250,7 @@ void main() {
     );
 }
 </script>
-<script src="./rc.js"></script>
+<script src="./rcmini.js"></script>
 </div>
 </body>
 </html>
