@@ -189,7 +189,7 @@ FragColor = current;
 }`,
     });
     this.surface.render = () => {
-      this.triggerDraw();
+      this.renderPass();
     };
 
     return props;
@@ -305,11 +305,6 @@ FragColor = current;
     this.dfRenderTargets = dfRenderTargets;
   }
 
-  load() {
-    this.reset();
-    this.initialized = true;
-  }
-
   clear() {
     if (this.initialized) {
       this.dfRenderTargets.forEach((target) => {
@@ -325,12 +320,6 @@ FragColor = current;
     this.renderer.setRenderTarget(this.dfRenderTargets[0]);
     this.dfRender();
     return this.dfRenderTargets[0].texture;
-  }
-
-  renderPass() {
-    let out = this.dfPass(out);
-    this.renderer.setRenderTarget(null);
-    this.dfRender();
   }
 }
 
@@ -355,7 +344,7 @@ class RC extends DistanceField {
 
     this.initializeParameters();
 
-    const fragmentShader = document.querySelector("#rc-fragment").innerHTML;
+    const fragmentShader = document.querySelector("#rc-fragment2").innerHTML;
 
     const {
       plane: rcPlane,
@@ -363,7 +352,7 @@ class RC extends DistanceField {
       renderTargets: rcRenderTargets,
     } = this.initThreeJS({
       renderTargetOverrides: {
-        minFilter: THREE.LinearMipMapLinearFilter,
+        minFilter: THREE.LinearMipmapLinearFilter,
         magFilter: THREE.LinearFilter,
         generateMipmaps: true,
       },
@@ -394,36 +383,12 @@ class RC extends DistanceField {
     this.lastLayer = 0;
 
     this.stage = 3; // min 1 max 3 step 1
-    this.rawBasePixelsBetweenProbes = 0.0; // min 0 max 4 step 1
-
-    const {
-      plane: overlayPlane,
-      render: overlayRender,
-      renderTargets: overlayRenderTargets,
-    } = this.initThreeJS({
-      uniforms: {
-        inputTexture: { value: null },
-      },
-      fragmentShader: `
-          uniform sampler2D inputTexture;
-
-          varying vec2 vUv;
-          out vec4 FragColor;
-
-          void main() {
-            vec3 rc = texture(inputTexture, vUv).rgb;
-            FragColor = vec4(rc, 1.0);
-          }`,
-    });
+    // this.rawBasePixelsBetweenProbes = 0.0; // min 0 max 4 step 1
 
     this.rcPlane = rcPlane;
     this.rcRender = rcRender;
     this.rcRenderTargets = rcRenderTargets;
     this.prev = 0;
-
-    this.overlayPlane = overlayPlane;
-    this.overlayRender = overlayRender;
-    this.overlayRenderTargets = overlayRenderTargets;
   }
 
   // Key parameters we care about
@@ -453,38 +418,10 @@ class RC extends DistanceField {
     }
   }
 
-  overlayPass(inputTexture) {
-    // if (this.forceFullPass) {
-    //   this.frame = 0;
-    // }
-
-    // this.overlayPlane.material.uniforms.inputTexture.value = inputTexture;
-    // this.renderer.setRenderTarget(this.overlayRenderTargets[0]);
-    // this.overlayRender();
-
-    if (!this.isDrawing) {
-      this.overlay = true;
-      const frame = 0; // this.forceFullPass ? 0 : 1 - this.frame;
-      this.plane.material.uniforms.inputTexture.value = inputTexture;
-
-      this.triggerDraw();
-      this.overlay = false;
-    }
-  }
-
-  triggerDraw() {
-    if (this.overlay) {
-      this.renderer.setRenderTarget(null);
-      this.render();
-      return;
-    }
-    this.renderPass();
-  }
-
   canvasModifications() {
     return {
       render: (e) => {
-        this.triggerDraw();
+        this.renderPass();
       },
     };
   }
@@ -503,7 +440,12 @@ class RC extends DistanceField {
     for (let i = this.firstLayer; i >= last; i--) {
       this.rcPlane.material.uniforms.cascadeIndex.value = i;
 
-      this.renderer.setRenderTarget(this.rcRenderTargets[this.prev]);
+      if (i == last) {
+        this.renderer.setRenderTarget(null);
+      } else {
+        this.renderer.setRenderTarget(this.rcRenderTargets[this.prev]);
+      }
+
       this.rcRender();
       this.rcPlane.material.uniforms.lastTexture.value = this.rcRenderTargets[this.prev].texture;
 
@@ -516,29 +458,8 @@ class RC extends DistanceField {
   doRenderPass() {
     this.rcPlane.material.uniforms.time.value = performance.now() / 1000.0;
 
-    if (this.frame == 0) {
-      if (this.stage == 0) {
-        this.renderer.setRenderTarget(null);
-        this.render();
-        return;
-      }
-
-      if (this.stage == 1) {
-        this.renderer.setRenderTarget(null);
-        return;
-      }
-
-      this.distanceFieldTexture = this.dfPass();
-
-      if (this.stage == 2) {
-        this.renderer.setRenderTarget(null);
-        this.dfRender();
-        return;
-      }
-    }
-
-    const rcTexture = this.rcPass(this.distanceFieldTexture);
-    this.overlayPass(rcTexture);
+    this.distanceFieldTexture = this.dfPass();
+    this.rcPass(this.distanceFieldTexture);
   }
 
   renderPass() {
@@ -554,7 +475,6 @@ class RC extends DistanceField {
     this.animating = true;
 
     this.doRenderPass();
-    this.desiredRenderPass = false;
 
     requestAnimationFrame(() => {
       this.animate();
@@ -573,14 +493,6 @@ class RC extends DistanceField {
     this.renderPass();
   }
 
-  load() {
-    this.reset();
-    this.initialized = true;
-  }
-
-  reset() {
-    this.clear();
-  }
 }
 
 let [width, height] = [window.innerWidth, window.innerHeight];
