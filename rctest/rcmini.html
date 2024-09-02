@@ -169,8 +169,8 @@ vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) 
   
       if (cascadeIndex == 0.0) {
         ivec2 texel = ivec2(int(vUv.x * resolution.x), int(vUv.y * resolution.y));
-        vec4 color = texelFetch(sceneTexture, texel, 0);
-        if (color.a > 0.0) {
+        vec4 color = texelFetch(distanceTexture, texel, 0);
+        if (color.r < 0.0) {
             FragColor = vec4(0.0, color.gba);
             return;
         }

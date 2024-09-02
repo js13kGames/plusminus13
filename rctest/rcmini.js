@@ -34,15 +34,15 @@ class MyCanvas {
     return [canvas, context];
   }
 
-  setupTexture(texture) {
-    texture.minFilter = THREE.NearestFilter;
-    texture.magFilter = THREE.NearestFilter;
-    texture.format = THREE.RGBAFormat;
-    texture.type = true ? THREE.HalfFloatType : THREE.FloatType;
-    texture.wrapS = THREE.ClampToEdgeWrapping;
-    texture.wrapT = THREE.ClampToEdgeWrapping;
-    texture.generateMipmaps = true;
-  }
+  // setupTexture(texture) {
+  //   texture.minFilter = THREE.NearestFilter;
+  //   texture.magFilter = THREE.NearestFilter;
+  //   texture.format = THREE.RGBAFormat;
+  //   texture.type = true ? THREE.HalfFloatType : THREE.FloatType;
+  //   texture.wrapS = THREE.ClampToEdgeWrapping;
+  //   texture.wrapT = THREE.ClampToEdgeWrapping;
+  //   texture.generateMipmaps = true;
+  // }
 
   updateTexture() {
     this.texture.needsUpdate = true;
@@ -331,7 +331,7 @@ class RC extends DistanceField {
     this.forceFullPass = true;
     super.innerInitialize();
     this.activelyDrawing = false;
-    this.rawBasePixelsBetweenProbes = 1.0;
+    this.rawBasePixelsBetweenProbes = 2.0;
     this.animating = false;
     this.sunAngleSlider = { value: 0 };
 
