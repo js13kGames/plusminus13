@@ -261,7 +261,7 @@ function initBoxes(width: number, height: number) {
       g = 0;
       b = 0;
     } else if (avoid13 && value === 13) {
-      console.log("avoid13", avoid13);
+      // console.log("avoid13", avoid13);
       r = 255;
       g = 0;
       b = 0;
