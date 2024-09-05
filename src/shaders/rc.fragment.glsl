@@ -37,6 +37,9 @@ const vec3 sunColor = vec3(0.95, 0.9, 0.8) * 4.0;
 const vec3 oldSkyColor = vec3(0.02, 0.08, 0.2);
 const vec3 oldSunColor = vec3(0.95, 0.95, 0.9);
 
+#define BRANCHING_FACTOR 2 // 2 
+#define SPATIAL_SCALE_FACTOR 1 // 1
+
 vec3 oldSunAndSky(float rayAngle) {
   // Get the sun / ray relative angle
   float angleToSun = mod(rayAngle - u_sunAngle, TAU);
@@ -65,7 +68,9 @@ float rand(vec2 co) {
 vec4 raymarch(
   vec2 normalizedPoint, vec2 delta, float scale, vec2 oneOverSize, vec2 interval, float intervalLength, float minStepSize
 ) {
+
     vec2 rayUv = normalizedPoint + delta * interval;
+
     if (floor(rayUv) != vec2(0.0)) return vec4(0);
 
     vec2 pre = delta * scale * oneOverSize;
@@ -76,12 +81,12 @@ vec4 raymarch(
         ivec2 texel = ivec2(int(rayUv.x * u_resolution.x), int(rayUv.y * u_resolution.y));
         float df = texelFetch(u_distanceTexture, texel, 0).r;
 
-        // df = df / max(u_resolution.x, u_resolution.y); // !!!
-
+        df = df / max(u_resolution.x, u_resolution.y); // !!!
         if (df <= minStepSize) {
           ivec2 texel = ivec2(int(rayUv.x * u_resolution.x), int(rayUv.y * u_resolution.y));
-          vec4 color = vec4(texelFetch(u_distanceTexture, texel, 0).gba, 1.0);
-          color.rgb = pow(color.rgb, vec3(u_srgb));
+          vec4 color = texelFetch(u_distanceTexture, texel, 0);
+          color.rgb = pow(color.gba, vec3(u_srgb));
+          color.a = 1.0;
           return color;
         }
 
@@ -123,6 +128,16 @@ vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) 
     return currentRadiance + upperSample;
   }
   
+  // Converts a color from linear light gamma to sRGB gamma
+vec3 fromLinear(vec3 linearRGB)
+{
+    bvec3 cutoff = lessThan(linearRGB, vec3(0.0031308));
+    vec3 higher = vec3(1.055)*pow(linearRGB, vec3(1.0/2.4)) - vec3(0.055);
+    vec3 lower = linearRGB * vec3(12.92);
+
+    return mix(higher, lower, cutoff);
+}
+
   void main() {
       vec2 coord = floor(vUv * u_cascadeExtent);
   
@@ -132,19 +147,17 @@ vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) 
       if (u_cascadeIndex == 0.0) {
         ivec2 texel = ivec2(int(vUv.x * u_resolution.x), int(vUv.y * u_resolution.y));
         vec4 color = texelFetch(u_distanceTexture, texel, 0); // sceneTexture !!!
-        // Calculate 1 pixel distance
-        // float minStepSize = 1.0; 
-        // if (color.r < 1.0) {
-            // FragColor = vec4(color.gba, 1.0);
+        if (color.r < 2.0) {
+            FragColor = vec4(color.gba, 1.0);
             // FragColor = vec4(color.r, 0.0, 1.0, 1.0);
             // FragColor = color.rgba;
-            // return;
-        // }
+            return;
+        }
       }
   
       float base = u_baseRayCount;
       float rayCount = pow(base, u_cascadeIndex + 1.0);
-      float sqrtBase = sqrt(u_baseRayCount);
+      float sqrtBase = sqrt(base);
       float spacing = pow(sqrtBase, u_cascadeIndex);
   
       // Hand-wavy rule that improved smoothing of other base ray counts
@@ -153,8 +166,9 @@ vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) 
       vec2 size = floor(u_cascadeExtent / spacing);
       vec2 probeRelativePosition = mod(coord, size);
       vec2 rayPos = floor(coord / size);
-  
-      float modifiedInterval = modifierHack * u_rayInterval * u_cascadeInterval;
+
+      float rayInterval = u_rayInterval;
+      float modifiedInterval = modifierHack * rayInterval * u_cascadeInterval;
   
       float start = u_cascadeIndex == 0.0 ? u_cascadeInterval : modifiedInterval;
       vec2 interval = (start * pow(base, (u_cascadeIndex - 1.0))) / u_resolution;
@@ -162,7 +176,7 @@ vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) 
   
       vec2 probeCenter = (probeRelativePosition + 0.5) * u_basePixelsBetweenProbes * spacing;
   
-      float preAvgAmt = u_baseRayCount;
+      float preAvgAmt = base;
   
       // Calculate which set of rays we care about
       float baseIndex = (rayPos.x + (spacing * rayPos.y)) * preAvgAmt;
@@ -177,7 +191,7 @@ vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) 
       float avgRecip = 1.0 / (preAvgAmt);
   
       vec2 normalizedProbeCenter = probeCenter * oneOverSize;
-  
+     
       vec4 totalRadiance = vec4(0.0);
       float noise = u_addNoise
           ? rand(vUv * (u_cascadeIndex + 1.0))
@@ -204,10 +218,18 @@ vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) 
         totalRadiance += merged * avgRecip;
       }
   
+      // FragColor = vec4(
+      //   (u_cascadeIndex > u_firstCascadeIndex)
+      //     ? totalRadiance.rgb
+      //     : pow(totalRadiance.rgb, vec3(1.0 / u_srgb)),
+      //   totalRadiance.a
+      // );
+
       FragColor = vec4(
         (u_cascadeIndex > u_firstCascadeIndex)
           ? totalRadiance.rgb
-          : pow(totalRadiance.rgb, vec3(1.0 / u_srgb)),
+          : fromLinear(totalRadiance.rgb),
         totalRadiance.a
       );
+      
     }

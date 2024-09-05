@@ -121,7 +121,7 @@ vec4 raymarch(
 
         if (df <= minStepSize) {
           ivec2 texel = ivec2(int(rayUv.x * resolution.x), int(rayUv.y * resolution.y));
-          vec4 color = vec4(0.0, texelFetch(distanceTexture, texel, 0).gba);
+          vec4 color = vec4(texelFetch(distanceTexture, texel, 0).gba, 1.0);
           color.rgb = pow(color.rgb, vec3(srgb));
           return color;
         }
@@ -171,7 +171,7 @@ vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) 
         ivec2 texel = ivec2(int(vUv.x * resolution.x), int(vUv.y * resolution.y));
         vec4 color = texelFetch(distanceTexture, texel, 0);
         if (color.r < 0.0) {
-            FragColor = vec4(0.0, color.gba);
+            FragColor = vec4(color.gba, 1.0);
             return;
         }
       }
@@ -192,7 +192,7 @@ vec4 merge(vec4 currentRadiance, float index, vec2 position, float spacingBase) 
   
       float start = cascadeIndex == 0.0 ? cascadeInterval : modifiedInterval;
       vec2 interval = (start * pow(base, (cascadeIndex - 1.0))) / resolution;
-      float intervalLength = ((modifiedInterval) * pow(base, cascadeIndex));
+      float intervalLength = ((modifiedInterval) * pow(base, cascadeIndex)) * 30.0;
   
       vec2 probeCenter = (probeRelativePosition + 0.5) * basePixelsBetweenProbes * spacing;
   
@@ -419,7 +419,7 @@ void main() {
 
     float start = cascadeIndex == 0.0 ? cascadeInterval : modifiedInterval;
     vec2 interval = (start * pow(base, (cascadeIndex - 1.0))) / resolution;
-    float intervalLength = (modifiedInterval) * pow(base, cascadeIndex);
+    float intervalLength = (modifiedInterval) * pow(base, cascadeIndex) * 30.0;
 
     vec2 probeCenter = (probeRelativePosition + 0.5) * basePixelsBetweenProbes * spacing;
 

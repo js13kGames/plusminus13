@@ -239,64 +239,66 @@ FragColor = current;
           float PI = 3.14159265359;
   
             vec2 p = gl_FragCoord.xy;
-           float minDistance = 999999.9;
+           float minDist = 999999.9;
             vec4 color = vec4(0.0);
   
             float speed = 1.0 + sin(time);
            // Clamp by the size of our texture (1.0 in uv space).
-            float distance = sdCircle(vUv, vec2(0.2, 0.5 + cos(speed + time) * 0.2), 0.05);
+            float distance = sdCircle(vUv, vec2(0.2, 0.5 + cos(time) * 0.2), 0.02);
   
-            if (distance < minDistance) {
-              minDistance = distance;
-              color.xyz = vec3(0.0, 0.5 + 0.5*cos(speed + time), 1.0); 
+            if (distance < minDist) {
+              minDist = distance;
+              color.xyz = vec3(1.0, 1.0, 1.0); 
             }
   
-            distance = sdCircle(vUv, vec2(0.4, 0.5 + cos(speed + (time + PI*0.1)) * 0.2), 0.05);
+            // distance = sdCircle(vUv, vec2(0.4, 0.5 + cos(speed + (time + PI*0.1)) * 0.2), 0.05);
   
-            if (distance < minDistance) {
-              minDistance = distance;
-              color.xyz = vec3(0.25 + 0.25*sin(speed + (time + PI*0.2)), 0.5 + 0.5*cos(speed + (time + PI*0.1)), 1.0); 
-            }
+            // if (distance < minDist) {
+            //   minDist = distance;
+            //   color.xyz = vec3(0.25 + 0.25*sin(speed + (time + PI*0.2)), 0.5 + 0.5*cos(speed + (time + PI*0.1)), 1.0); 
+            // }
   
-            // Add a circle that circles
-            distance = sdCircle(vUv, vec2(0.6, 0.5 + cos(speed+(time + PI*0.2)) * 0.2), 0.05);
-            if (distance < minDistance) {
-              minDistance = distance;
-              color.xyz = vec3(0.50 + 0.50*sin(speed + (time + PI*0.4)), 0.5 + 0.5*cos(speed+(time + PI*0.2)), 1.0); 
-            }
+            // // Add a circle that circles
+            // distance = sdCircle(vUv, vec2(0.6, 0.5 + cos(speed+(time + PI*0.2)) * 0.2), 0.05);
+            // if (distance < minDist) {
+            //   minDist = distance;
+            //   color.xyz = vec3(0.50 + 0.50*sin(speed + (time + PI*0.4)), 0.5 + 0.5*cos(speed+(time + PI*0.2)), 1.0); 
+            // }
   
-            // One more 
-            distance = sdCircle(vUv, vec2(0.8, 0.5 + cos(speed+(time + PI*0.3)) * 0.2), 0.05);
-            if (distance < minDistance) {
-              minDistance = distance;
-              color.xyz = vec3(0.75 + 0.25*sin(speed + (time + PI*0.6)), 0.5 + 0.5*cos(speed+(time + PI*0.3)), 1.0); 
-            }
+            // // One more 
+            // distance = sdCircle(vUv, vec2(0.8, 0.5 + cos(speed+(time + PI*0.3)) * 0.2), 0.05);
+            // if (distance < minDist) {
+            //   minDist = distance;
+            //   color.xyz = vec3(0.75 + 0.25*sin(speed + (time + PI*0.6)), 0.5 + 0.5*cos(speed+(time + PI*0.3)), 1.0); 
+            // }
   
             // Add a fixed capsule
             distance = sdCapsule(vUv, vec2(0.5, 0.5), vec2(0.5, 0.7), 0.02);
-            if (distance < minDistance) {
-              minDistance = distance;
-              color.xyz = vec3(0.0, 0.0, 1.0); 
+            if (distance < minDist) {
+              minDist = distance;
+              color.xyz = vec3(0.0, 0.0, 0.0); 
             }
   
-            // Add a fixed capsule
-            distance = sdCapsule(vUv, vec2(0.3, 0.2), vec2(0.3, 0.4), 0.02);
-            if (distance < minDistance) {
-              minDistance = distance;
-              color.xyz = vec3(0.0, 0.0, 1.0); 
-            }
+            // // Add a fixed capsule
+            // distance = sdCapsule(vUv, vec2(0.3, 0.2), vec2(0.3, 0.4), 0.02);
+            // if (distance < minDist) {
+            //   minDist = distance;
+            //   color.xyz = vec3(0.0, 0.0, 0.0); 
+            // }
   
-            // Add a fixed capsule
-            distance = sdCapsule(vUv, vec2(0.7, 0.2), vec2(0.7, 0.4), 0.02);
-            if (distance < minDistance) {
-              minDistance = distance;
-              color.xyz = vec3(0.0, 0.0, 1.0); 
-            }
-            minDistance = clamp(minDistance, 0.0, 1.0);    
+            // // Add a fixed capsule
+            // distance = sdCapsule(vUv, vec2(0.7, 0.2), vec2(0.7, 0.4), 0.02);
+            // if (distance < minDist) {
+            //   minDist = distance;
+            //   color.xyz = vec3(0.0, 0.0, 0.0); 
+            // }
+            minDist = clamp(minDist, 0.0, 1.0);    
   
         
             // Normalize and visualize the distance
-            FragColor = vec4(minDistance, color.xyz);
+            FragColor = vec4(minDist, color.xyz);
+
+
           }`,
     });
 
@@ -336,7 +338,7 @@ class RC extends DistanceField {
     this.sunAngleSlider = { value: 0 };
 
     // Uniform parameters
-    const rayInterval = 1.0;
+    const rayInterval = 2.0;
     const baseRayCount = 1.0; // max 3.0, step 1.0
     const srgb = 1.0;
 

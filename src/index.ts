@@ -4,40 +4,41 @@ import {
   update,
   superMode,
   superModeAvailable,
+  tempInvincibility,
+  setTempInvincibility,
   gameStarted,
   startGame,
   needsLevelRestart,
   shouldlevelRestart,
   onGameStop,
+  wave,
 } from "./gamestate";
-import Music from "./music2";
+import Music from "./music";
 import { playRandomSound, playSound } from "./sound";
 import WebGLRenderer from "./engine";
 
-// Store mouse position and movement
+const MAX_SPEED = 5.0;
+const MAX_SUPER_SPEED = 10.0;
+const MOVE_ACCEL = 0.4;
+const MOVE_SUPER_ACCEL = 0.8;
+
+// Store position and movement
 let cX = window.innerWidth / 2;
 let cY = window.innerHeight / 2 + 300;
 let moveAngle = 0;
-let moveSpeed = 0.0;
 let speedX = 0.0;
 let speedY = 0.0;
-let moveAccel = 0.05;
-let maxSpeed = 5.0;
-const friction = 0.99;
-const rotationSpeed = 0.03;
-const previousSpeedX = 0.0;
-const previousSpeedY = 0.0;
-const lateralGForce = 0.0;
-const forwardGForce = 0.0;
-const visualRotation = 0.0;
-const visualRotationSpeed = 0.1;
-let maxBackwardSpeed = -5;
-let illumination = 0.0;
+let moveAccel = MOVE_ACCEL;
+let maxSpeed = MAX_SPEED;
+
 let angleLimited = 0;
 let musicStarted = 0;
 
 let music: Music;
 const start = () => {
+  cX = window.innerWidth / 2;
+  cY = window.innerHeight / 2 + 300;
+  setTempInvincibility(1.0);
   startGame();
   document.querySelector("#start")?.setAttribute("style", "display: none");
   document.getElementById("game-ui")?.setAttribute("style", "display: flex");
@@ -114,29 +115,35 @@ function calculateInertiaDeflectionAngle(ax: number, ay: number) {
 
   // Smooth the angle change
   const angleDiff = angle - moveAngle;
-  // if (angleDiff > Math.PI) {
-  //   moveAngle += Math.PI * 2;
-  // } else if (angleDiff < -Math.PI) {
-  //   moveAngle -= Math.PI * 2;
-  // }
   moveAngle += angleDiff * 0.1;
   return moveAngle;
-  // return angle;
 }
 
-function updateMovement2() {
+function updateMovement2(delta: number) {
   // Set acceleration and speed limits based on "super mode"
-  if (keyState.Space) {
-    maxSpeed = 10.0;
-    moveAccel = 0.6;
-    maxBackwardSpeed = -10;
+  if (keyState.Space && superModeAvailable) {
+    maxSpeed = MAX_SUPER_SPEED;
+    moveAccel = MOVE_SUPER_ACCEL;
   } else {
-    maxSpeed = 5.0;
-    moveAccel = 0.3;
-    maxBackwardSpeed = -5;
+    if (maxSpeed > MAX_SPEED && maxSpeed <= MAX_SUPER_SPEED) {
+      // slowly decrease speed
+      maxSpeed *= 0.96;
+    } else {
+      maxSpeed = MAX_SPEED;
+    }
+    if (moveAccel > MOVE_ACCEL && moveAccel <= MOVE_SUPER_ACCEL) {
+      // slowly decrease speed
+      moveAccel *= 0.96;
+    } else {
+      moveAccel = MOVE_ACCEL;
+    }
   }
   let targetDx = 0;
   let targetDy = 0;
+
+  const waveSpeedup = 1 + (wave - 1) * 0.3;
+  moveAccel *= waveSpeedup;
+  maxSpeed *= waveSpeedup;
 
   const friction = 0.96; // Friction factor (0-1)
 
@@ -154,13 +161,13 @@ function updateMovement2() {
   }
 
   moveAngle = calculateInertiaDeflectionAngle(targetDx * moveAccel, targetDy * moveAccel);
-  // Apply acceleration towards the target direction
-  speedX += targetDx * moveAccel;
-  speedY += targetDy * moveAccel;
+  // Apply acceleration towards the target direction, independent of fps
+  speedX += targetDx * moveAccel * (delta / 16);
+  speedY += targetDy * moveAccel * (delta / 16);
 
   // Apply friction
-  speedX *= friction;
-  speedY *= friction;
+  speedX *= 1.0 - (1.0 - friction) * (delta / 16);
+  speedY *= 1.0 - (1.0 - friction) * (delta / 16);
 
   // Limit speed to maxSpeed
   const currentSpeed = Math.sqrt(speedX * speedX + speedY * speedY);
@@ -171,27 +178,29 @@ function updateMovement2() {
   }
 
   // Update position
-  cX += speedX;
-  cY += speedY;
+  cX += speedX * (delta / 16);
+  cY += speedY * (delta / 16);
 
   // Screen wrapping
-  if (cX > window.innerWidth) cX = 0;
-  if (cX < 0) cX = window.innerWidth;
-  if (cY > window.innerHeight) cY = 0;
-  if (cY < 0) cY = window.innerHeight;
+  // if (cX > window.innerWidth) cX = 0;
+  // if (cX < 0) cX = window.innerWidth;
+  // if (cY > window.innerHeight) cY = 0;
+  // if (cY < 0) cY = window.innerHeight;
+  // Limit the player to the screen
+  if (cX > window.innerWidth) cX = window.innerWidth;
+  if (cX < 0) cX = 0;
+  if (cY > window.innerHeight) cY = window.innerHeight;
+  if (cY < 0) cY = 0;
 }
 
 // Exit fullscreen on escape key
-// document.addEventListener("keydown", (event) => {
-//   if (event.key === "Escape") {
-//     document.exitFullscreen();
-//   }
-// });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    document.exitFullscreen();
+  }
+});
 
 const debug = window.location.search.includes("debug");
-// const sdfRenderer = new TinySDFRenderer();
-// const atlas = sdfRenderer.render(["A", "B", "C", "D", "1", "3", "L", "T"]);
-// Render geometric SDF to a float texture
 
 // Create the render loop
 let atlasRendered = 0; // Flag to track if the atlas has been rendered
@@ -210,7 +219,12 @@ let atlasRendered = 0; // Flag to track if the atlas has been rendered
 
 let timeOfRender = performance.now();
 
-function render() {
+let lastTime = performance.now();
+
+function render(time: number) {
+  // Calculate time delta
+  const delta = time - lastTime;
+  lastTime = time;
   // Set the fps of the #fps element
   if (debug) {
     const fps = 1000 / (performance.now() - timeOfRender);
@@ -218,22 +232,22 @@ function render() {
     document.getElementById("fps")!.innerText = fps.toFixed(2);
   }
 
-  updateMovement2();
+  updateMovement2(delta);
 
   // Needs to reset, as indicated by gamestate?
   if (needsLevelRestart()) {
     cX = window.innerWidth / 2;
     cY = window.innerHeight / 2;
     moveAngle = 0;
-    moveSpeed = 0;
-    illumination = 1.0;
-    // music.stop();
+    speedX = 0;
+    speedY = 0;
+    setTempInvincibility(1.0);
     music.setNextTempo();
-    // music.start();
     shouldlevelRestart(false);
   }
 
-  illumination *= 0.96;
+  // Adjusted for frame rate
+  setTempInvincibility(tempInvincibility * Math.pow(0.97, delta / 16));
 
   if (atlasRendered < 2) {
     initBoxes(window.innerWidth, window.innerHeight);
@@ -247,8 +261,8 @@ function render() {
     document.getElementById("over")!,
     cX,
     cY,
-    visualRotation + moveAngle, // the rotation of the character
-    keyState.Space ? true : false,
+    moveAngle, // the rotation of the character
+    keyState.Space,
   );
 
   const speed = Math.sqrt(speedX * speedX + speedY * speedY);
@@ -268,18 +282,17 @@ function render() {
     boxesData[offset + 9] = box.g;
     boxesData[offset + 10] = box.b;
   }
-  // gl.uniformMatrix4fv(boxesLocation, false, boxesData);
 
   renderer.render({
     u_super: superMode,
     u_superAvailable: superModeAvailable,
     u_gameStarted: gameStarted ? 1 : 0,
     u_Mouse: [cX, cY, keyState.Space ? 1 : 0, 0],
-    u_MouseMove: [moveAngle, speed, illumination, angleLimited],
+    u_MouseMove: [moveAngle, speed, tempInvincibility, angleLimited],
     u_boxes: boxesData,
   });
 
   requestAnimationFrame(render);
 }
 
-render();
+render(performance.now());

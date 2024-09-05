@@ -1,70 +1,68 @@
-const localStorageName = "d094309ufdHIGHSCORE";
+const localStorageName = "+-13-AOSDfkpok4034-HIGHSCORE";
 
 type HighScore = {
   id?: number;
   score?: number;
+  adjustedScore?: number;
   time?: number;
   name?: string;
+  resolution?: string;
+};
+
+const calculateAdjustedScore = (score: number): number => {
+  const resolution = getCurrentResolution();
+  const [width, height] = resolution.split("x").map(Number);
+  const totalPixels = width * height;
+  const baseResolution = 1024 * 1024;
+  const adjustmentFactor = Math.sqrt(baseResolution / totalPixels);
+  return Math.round(score * adjustmentFactor);
 };
 
 const storeHighScore = ({ id, score, time, name }: HighScore) => {
-  // Retrieve high scores from local storage
+  const resolution = getCurrentResolution();
   const highScores = JSON.parse(localStorage.getItem(localStorageName) || "[]");
+  const adjustedScore = calculateAdjustedScore(score!);
 
-  // Generate a quick unique ID for this score
   if (id === undefined) {
     id = Date.now();
-    highScores.push({ id, score, time, name: "Player" });
+    highScores.push({ id, score, adjustedScore, time, name: "Player", resolution });
   } else {
-    // Find the existing score and update it
     const existingScore = highScores.find((entry: { id: number }) => entry.id === id);
     if (existingScore) {
       existingScore.name = name;
+      existingScore.resolution = resolution;
+      existingScore.adjustedScore = adjustedScore;
     } else {
       console.error("Could not find high score with ID", id);
     }
   }
-  // Add player's score to high scores array
 
-  // Sort by score (descending) and then by time (ascending)
+  // Sort by adjusted score (descending) and then by time (ascending)
   highScores.sort(
-    (a: { score: number; time: number }, b: { score: number; time: number }) =>
-      b.score - a.score || a.time - b.time,
+    (a: { adjustedScore: number; time: number }, b: { adjustedScore: number; time: number }) =>
+      b.adjustedScore - a.adjustedScore || a.time - b.time,
   );
 
-  // Save updated high scores back to local storage
   localStorage.setItem(localStorageName, JSON.stringify(highScores));
   return id;
 };
 
-// Gets the high scores from local storage, taking the id of the current player as input
-// The current player can then change their name in the high scores list
 const displayHighScores = (id?: number) => {
-  // Render the top 10 high scores
   const highScoresList = document.getElementById("scoreboard");
-  // Clear previous content
   if (!highScoresList) return;
   highScoresList.innerHTML = "";
   const highScores = JSON.parse(localStorage.getItem(localStorageName) || "[]");
 
-  // If the player is below the top 10, add them to the list
-  highScores
-    .slice(0, 10)
-    .forEach((entry: { name: any; score: any; time: any; id: number }, index: number) => {
-      const scoreEntry = score(entry, index, !!id && id === entry.id);
-      if (highScoresList) {
-        highScoresList.appendChild(scoreEntry);
-      }
-    });
+  highScores.slice(0, 10).forEach((entry: HighScore, index: number) => {
+    const scoreEntry = score(entry, index, !!id && id === entry.id);
+    highScoresList.appendChild(scoreEntry);
+  });
 
-  // If the player is below the top 10, add them to the list
   const playerScore = highScores.find((entry: { id: number }) => entry.id === id);
   if (playerScore && highScores.length > 10 && highScores.indexOf(playerScore) >= 10) {
     const playerIndex = highScores.indexOf(playerScore);
     const scoreEntry = score(playerScore, playerIndex, true);
-    if (highScoresList) {
-      highScoresList.appendChild(scoreEntry);
-    }
+    highScoresList.appendChild(scoreEntry);
   }
 };
 
@@ -74,39 +72,51 @@ const score = (entry: HighScore, index: number, showInput: boolean) => {
 
   if (showInput) {
     scoreEntry.className += " current-player";
-
-    // Create a submit button
-    const submitButton = document.createElement("button");
-    submitButton.type = "submit";
-    submitButton.textContent = "Save";
-
-    scoreEntry.innerHTML = `<div class="place">${index + 1}</div><div class="name">
-      <form id="name-form"><input type="text" value="${entry.name || ""}" placeholder="Enter name" class="name-input" autofocus /></form>
-      </div><div class="score">${entry.score} points</div><div class="time">${entry.time?.toFixed(2).replace(".", ":")}s</div>`;
-    // Handle form submission
+    scoreEntry.innerHTML = `
+      <div class="place">${index + 1}</div>
+      <div class="name">
+        <form id="name-form">
+          <input type="text" value="${entry.name || ""}" placeholder="Enter name" class="name-input" autofocus />
+        </form>
+      </div>
+      <div class="score">${entry.adjustedScore} (${entry.score})</div>
+      <div class="time">${entry.time?.toFixed(2).replace(".", ":")}s</div>
+      <div class="resolution">${entry.resolution || "N/A"}</div>
+    `;
 
     const form = scoreEntry.querySelector("form");
     const input = scoreEntry.querySelector("input");
     if (form && input) {
-      // Select the input field
       input.focus();
       form.onsubmit = (event) => {
         event.preventDefault();
         const newName = input.value.trim();
         if (newName) {
-          storeHighScore({ id: entry.id, name: newName }); // Update the high score
-          displayHighScores(); // Re-render the high scores list
+          storeHighScore({
+            id: entry.id,
+            name: newName,
+            score: entry.score,
+            resolution: getCurrentResolution(),
+          });
+          displayHighScores();
         }
       };
     }
   } else {
-    // Display the high score, each entry has a place, name, score, and time
-    // Each should be in a div element with classes e.g. "name", "score", and "time"
-    scoreEntry.innerHTML = `<div class="place">${index + 1}</div><div class="name">${entry.name || "---"}</div><div class="score">${entry.score} points</div><div class="time">${entry.time?.toFixed(2).replace(".", ":")}s</div>`;
-    // scoreEntry.innerHTML = `${index + 1}. ${entry.name || "---"} - ${entry.score} points - ${entry.time?.toFixed(2).replace(".", ":")}s`;
+    scoreEntry.innerHTML = `
+      <div class="place">${index + 1}</div>
+      <div class="name">${entry.name || "---"}</div>
+      <div class="score">${entry.adjustedScore} (${entry.score})</div>
+      <div class="time">${entry.time?.toFixed(2).replace(".", ":")}s</div>
+      <div class="resolution">${entry.resolution || "N/A"}</div>
+    `;
   }
 
   return scoreEntry;
 };
 
-export { storeHighScore, displayHighScores };
+const getCurrentResolution = () => {
+  return `${window.innerWidth}x${window.innerHeight}`;
+};
+
+export { storeHighScore, displayHighScores, getCurrentResolution };

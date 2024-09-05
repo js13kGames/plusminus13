@@ -373,7 +373,7 @@ float sd = sdStickman2(p, mousePos, 20.0, rotation, min(u_MouseMove.w + clicked,
 // Determine the circle color based on the mouse state
 vec3 circleColor;
 if (u_Mouse.z > 0.0 && u_super > 0.0 && u_superAvailable > 0.0) {
-    circleColor = vec3(2.0);
+    circleColor = vec3(1.1);
 } else if (u_Mouse.w > 0.0) {
     circleColor = vec3(0.0, 0.0, 0.0); // White color if mouse is clicked
 } else {
@@ -435,25 +435,25 @@ if (sd < minDist) {
     finalColor = circleColor;
 }
 
-uv = gl_FragCoord.xy / u_resolution.xy;
-minDist = 1e10;
-// simple circle
-sd = sdCircle(uv, vec2(0.5 + cos(u_time)* 0.3, 0.5 + sin(u_time) * 0.3), 0.01);
-// sd = sdStickman2(uv, vec2(0.5, 0.5), 1.0, rotation, min(u_MouseMove.w + clicked, 1.0), magnitude / 30.0);
-// sd = sd1000.0;
+// uv = gl_FragCoord.xy / u_resolution.xy;
+// minDist = 1e10;
+// // simple circle
+// sd = sdCircle(uv, vec2(0.5 + cos(0.3*u_time)* 0.3, 0.5 + sin(0.3*u_time) * 0.3), 0.01);
+// // sd = sdStickman2(uv, vec2(0.5, 0.5), 1.0, rotation, min(u_MouseMove.w + clicked, 1.0), magnitude / 30.0);
+// // sd = sd1000.0;
 
-finalColor = vec3(0.0);
-if(sd < minDist){
-    finalColor = vec3(1.0, 1.0, 1.0);
-    minDist = sd;
-}
+// finalColor = vec3(0.0);
+// if(sd < minDist){
+//     finalColor = vec3(1.0, 1.0, 1.0);
+//     minDist = sd;
+// }
 
-// and a black capsule
-sd = sdCapsule(uv, vec2(0.4, 0.5), vec2(0.5, 0.5), 0.05);
-if(sd < minDist){
-    finalColor = vec3(0.0);
-    minDist = sd;
-}
+// // and a black capsule
+// sd = sdCapsule(uv, vec2(0.4, 0.5), vec2(0.5, 0.5), 0.05);
+// if(sd < minDist){
+//     finalColor = vec3(0.0);
+//     minDist = sd;
+// }
 
 fragColor = vec4(minDist, finalColor);
 

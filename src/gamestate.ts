@@ -4,10 +4,10 @@ import { playSound } from "./sound";
 let score = 0;
 let lives = 3;
 let timeLeft = 1300; // 13 seconds in 1/100ths of a second
-let wave = 1;
+export let wave = 1;
 let avoid13 = true;
 let lastTime = 0;
-
+export let tempInvincibility = 1.0;
 interface Box {
   x: number;
   y: number;
@@ -34,6 +34,10 @@ export function shouldlevelRestart(is: boolean) {
 }
 export function needsLevelRestart() {
   return levelRestart;
+}
+
+export function setTempInvincibility(n: number) {
+  tempInvincibility = n;
 }
 
 // Draw the body box
@@ -309,7 +313,7 @@ export function update(
   mouseX: number,
   mouseY: number,
   rotation: number,
-  mouseDown: boolean,
+  supermodeWanted: boolean,
 ) {
   if (!gameStarted) {
     return;
@@ -394,11 +398,11 @@ export function update(
     }
 
     // Check for collision with the player
-    if (checkCollision(bodyBox, box, mouseX, mouseY, -rotation)) {
+    if (checkCollision(bodyBox, box, mouseX, mouseY, -rotation) && tempInvincibility <= 0.1) {
       if (
         (!avoid13 && box.value === 13) ||
         (avoid13 && box.value !== 13) ||
-        (mouseDown && superModeAvailable)
+        (supermodeWanted && superModeAvailable)
       ) {
         playSound(box.value);
         score += box.value;
@@ -412,6 +416,8 @@ export function update(
       } else if ((avoid13 && box.value === 13) || (!avoid13 && box.value !== 13)) {
         lives -= 1;
         score -= box.value;
+        score = Math.max(0, score);
+        tempInvincibility = 1.0;
         playSound(0);
       }
 
@@ -424,19 +430,19 @@ export function update(
   // A heart emoji for each life
   livesEl.innerText = "❤️".repeat(Math.max(0, lives));
   // Update super mode
-  if (mouseDown && superModeAvailable) {
-    superMode = Math.max(0, superMode - deltaTime / 50);
+  if (supermodeWanted && superModeAvailable) {
+    superMode = Math.max(0, superMode - deltaTime / 30);
     if (superMode === 0) {
       superModeAvailable = 0.0;
     }
   }
-  if (!mouseDown && superMode <= 0) {
+  if (!supermodeWanted && superMode <= 0) {
     superModeAvailable = 0.0;
   }
 
   setProgress(superMode);
   // Check for game over
-  if (lives > 0) {
+  if (lives >= 0) {
     if (timeLeft < 0) {
       wave++;
       avoid13 = wave % 2 !== 0; // Toggle the avoid/hunt rule
@@ -516,7 +522,7 @@ function setProgress(value: number) {
     return;
   }
 
-  circle.style.background = `conic-gradient(#000 ${angle}deg, #fff ${angle}deg)`;
+  circle.style.background = `conic-gradient(#fff ${angle}deg, #000 ${angle}deg)`;
 
   // Add blinking effect if full
   if (progressValue >= 100) {
