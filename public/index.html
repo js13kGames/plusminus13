@@ -94,6 +94,27 @@
     color: #eee;
     text-align: center;
 }
+
+.h {
+    font-size: 2em;
+    position: absolute;
+    top: 75%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: none;
+    text-align: center;
+    color: #eee;
+}
+
+@keyframes fadeOut {
+    0% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
 #start button, #over button {
     padding: 1em 3em;
     border-radius: 2em;
@@ -196,10 +217,12 @@
             </div></div>
         </div>
         <div id="timer">13:00</div>
-
     </div>
+    <div id="help2" class="h">Press space for shield!</div>
+    <div id="help1" class="h">Use arrow keys to move! Charge shield with numbers!</div>
+
     <div id="start">
-        <p>WASD, Space for super</p>
+        <p>WASD, Space for shield</p>
         <button>
             <!-- Right facing triangle -->
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -207,6 +230,7 @@
             </svg>
         </button>
     </div>
+
     <div id="over" style="display: none;">
         <h1>Game Over</h1>
         <div id="scoreboard">

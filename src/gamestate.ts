@@ -398,7 +398,7 @@ export function update(
     }
 
     // Check for collision with the player
-    if (checkCollision(bodyBox, box, mouseX, mouseY, -rotation) && tempInvincibility <= 0.1) {
+    if (checkCollision(bodyBox, box, mouseX, mouseY, -rotation)) {
       if (
         (!avoid13 && box.value === 13) ||
         (avoid13 && box.value !== 13) ||
@@ -413,15 +413,18 @@ export function update(
         if (superMode > 0) {
           superModeAvailable = 1.0;
         }
-      } else if ((avoid13 && box.value === 13) || (!avoid13 && box.value !== 13)) {
+        respawnBox(box, gameWidth, gameHeight);
+      } else if (
+        ((avoid13 && box.value === 13) || (!avoid13 && box.value !== 13)) &&
+        tempInvincibility <= 0.1
+      ) {
         lives -= 1;
         score -= box.value;
         score = Math.max(0, score);
         tempInvincibility = 1.0;
         playSound(0);
+        respawnBox(box, gameWidth, gameHeight);
       }
-
-      respawnBox(box, gameWidth, gameHeight);
     }
   }
 

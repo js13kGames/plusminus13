@@ -43,6 +43,10 @@ const start = () => {
   document.querySelector("#start")?.setAttribute("style", "display: none");
   document.getElementById("game-ui")?.setAttribute("style", "display: flex");
   document.getElementById("over")?.setAttribute("style", "display: none");
+  document
+    .getElementById("help1")!
+    .setAttribute("style", "display: block; animation: fadeOut 6s forwards;");
+
   if (!musicStarted) {
     music = new Music();
     music.start();
@@ -243,6 +247,13 @@ function render(time: number) {
     speedY = 0;
     setTempInvincibility(1.0);
     music.setNextTempo();
+
+    console.log(wave);
+
+    if (wave === 2) {
+      const help = document.getElementById("help2")!;
+      help.setAttribute("style", "display: block; animation: fadeOut 6s forwards;");
+    }
     shouldlevelRestart(false);
   }
 

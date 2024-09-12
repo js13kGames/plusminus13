@@ -115,7 +115,7 @@ export default class WebGLRenderer {
   rcFBOs!: (WebGLFramebuffer | null)[];
 
   constructor(canvasId: string, width: number, height: number) {
-    this.rawBasePixelsBetweenProbes = 2.0;
+    this.rawBasePixelsBetweenProbes = 1.0;
     this.width = width;
     this.height = height;
 

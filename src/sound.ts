@@ -28,7 +28,7 @@ const getBuffer = (D: number[]) => {
 };
 
 // Frequencies for one octave
-const frequencies = [609, 653, 705, 822, 887, 954, 1050].map((f) => f / 8);
+const frequencies = [261, 277, 293, 311, 329, 349, 369, 392, 415, 440].map((f) => f / 2);
 // Generate three octaves
 const soundBuffers: AudioBuffer[] = [];
 for (let i = -1; i < 3; i++) {
